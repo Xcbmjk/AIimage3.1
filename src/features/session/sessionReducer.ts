@@ -1,0 +1,61 @@
+import type { CapturedPhoto, Entitlement, GeneratedAsset, GenerationJob, KioskSession, KioskStage, PaymentOrder, ShareLink } from '../../types'
+
+export const createInitialSession = (): KioskSession => ({
+  id: crypto.randomUUID(),
+  stage: 'welcome',
+  entitlement: null,
+  paymentOrder: null,
+  paymentToken: null,
+  photo: null,
+  selectedStyleIds: [],
+  jobs: [],
+  assets: [],
+  shareLink: null,
+  error: null,
+})
+
+export type SessionAction =
+  | { type: 'GO'; stage: KioskStage }
+  | { type: 'REDEEMED'; entitlement: Entitlement }
+  | { type: 'PAYMENT_CREATED'; order: PaymentOrder }
+  | { type: 'PAYMENT_CONFIRMED'; token: string }
+  | { type: 'PHOTO_SET'; photo: CapturedPhoto }
+  | { type: 'TOGGLE_STYLE'; styleId: string; maxStyles: number }
+  | { type: 'JOBS_UPDATED'; jobs: GenerationJob[] }
+  | { type: 'GENERATED'; assets: GeneratedAsset[] }
+  | { type: 'SHARE_READY'; shareLink: ShareLink }
+  | { type: 'ERROR'; message: string | null }
+  | { type: 'RESET' }
+
+export function sessionReducer(state: KioskSession, action: SessionAction): KioskSession {
+  switch (action.type) {
+    case 'GO':
+      return { ...state, stage: action.stage, error: null }
+    case 'REDEEMED':
+      return { ...state, entitlement: action.entitlement, stage: 'camera', error: null }
+    case 'PAYMENT_CREATED':
+      return { ...state, paymentOrder: action.order, error: null }
+    case 'PAYMENT_CONFIRMED':
+      return { ...state, paymentToken: action.token, stage: 'camera', error: null }
+    case 'PHOTO_SET':
+      return { ...state, photo: action.photo, stage: 'review', error: null }
+    case 'TOGGLE_STYLE': {
+      const selected = state.selectedStyleIds.includes(action.styleId)
+        ? state.selectedStyleIds.filter((id) => id !== action.styleId)
+        : state.selectedStyleIds.length < action.maxStyles
+          ? [...state.selectedStyleIds, action.styleId]
+          : state.selectedStyleIds
+      return { ...state, selectedStyleIds: selected }
+    }
+    case 'JOBS_UPDATED':
+      return { ...state, jobs: action.jobs }
+    case 'GENERATED':
+      return { ...state, assets: action.assets, stage: 'results' }
+    case 'SHARE_READY':
+      return { ...state, shareLink: action.shareLink, stage: 'download' }
+    case 'ERROR':
+      return { ...state, error: action.message }
+    case 'RESET':
+      return createInitialSession()
+  }
+}
