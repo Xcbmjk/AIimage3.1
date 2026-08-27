@@ -6,6 +6,7 @@ import { productConfig } from '../../config/product'
 import { demoPhoto, stylePresets } from '../../mocks/fixtures/styles'
 import { scenePresets } from '../../mocks/fixtures/scenes'
 import { services } from '../../services'
+import { createUuid } from '../../lib/uuid'
 import type { ScenePreset, StylePreset } from '../../types'
 import { useSession } from '../session/SessionProvider'
 
@@ -292,7 +293,7 @@ function StylesPage() {
     generatingRef.current = true
     const selectedStyles = stylePresets.filter((style) => state.selectedStyleIds.includes(style.id))
     if (!state.paymentToken) return
-    const generationId = state.generationId ?? crypto.randomUUID()
+    const generationId = state.generationId ?? createUuid()
     dispatch({ type: 'GENERATION_STARTED', generationId })
     void services.generation.generate(state.id, state.paymentToken, generationId, state.photo, selectedScene, selectedStyles, (jobs) => dispatch({ type: 'JOBS_UPDATED', jobs })).then((assets) => {
       dispatch({ type: 'GENERATED', assets })

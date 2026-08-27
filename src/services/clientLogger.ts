@@ -1,3 +1,5 @@
+import { createUuid } from '../lib/uuid'
+
 type ClientEventData = Record<string, string | number | boolean>
 
 const eventNames = new Set([
@@ -17,7 +19,7 @@ const eventNames = new Set([
 
 export function trackClientEvent(event: string, sessionId: string, data: ClientEventData = {}) {
   if (!eventNames.has(event)) return
-  const requestId = crypto.randomUUID()
+  const requestId = createUuid()
   void fetch('/api/events', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Request-ID': requestId },

@@ -1,7 +1,8 @@
 import type { CapturedPhoto, Entitlement, GeneratedAsset, GenerationJob, KioskSession, KioskStage, PaymentOrder, ShareLink } from '../../types'
+import { createUuid } from '../../lib/uuid'
 
 export const createInitialSession = (): KioskSession => ({
-  id: crypto.randomUUID(),
+  id: createUuid(),
   stage: 'welcome',
   entitlement: null,
   paymentOrder: null,
