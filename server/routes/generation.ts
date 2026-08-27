@@ -9,8 +9,10 @@ import { createMockProvider } from '../providers/mock'
 import { createSeedreamProvider } from '../providers/seedream'
 import { createJimengI2iProvider } from '../providers/jimengI2i'
 import { stylePresets } from '../../src/mocks/fixtures/styles'
+import { scenePresets } from '../../src/mocks/fixtures/scenes'
 import type { GeneratedAsset } from '../../src/types'
 import { PaymentOrderStore } from '../payment/orderStore'
+import { withPortraitPrompt } from '../lib/portraitPrompt'
 
 const clientEvents = new Set([
   'session.stage_changed',
@@ -38,6 +40,8 @@ export function createGenerationRouter(logger: Logger, paymentStore: PaymentOrde
   const config = loadConfig()
   const model = config.provider === 'gpt-image-2' ? config.gpt.model : config.provider === 'seedream' ? config.seedream.model : config.provider === 'jimeng-i2i' ? config.jimeng.reqKey : 'mock'
   const router = express.Router()
+  const runningGenerations = new Map<string, Promise<GeneratedAsset[]>>()
+  const completedGenerations = new Map<string, { assets: GeneratedAsset[]; expiresAt: number }>()
   const providers = {
     mock: createMockProvider(),
     'gpt-image-2': createGptImageProvider(config),
@@ -72,8 +76,9 @@ export function createGenerationRouter(logger: Logger, paymentStore: PaymentOrde
     response.setHeader('X-Request-ID', id)
     const startedAt = Date.now()
     let sessionId: string | undefined
+    let activeGenerationId: string | undefined
     try {
-      const { photo, styles, sessionId: incomingSessionId } = request.body as { photo?: string; styles?: Array<{ id?: string }>; sessionId?: string }
+      const { photo, sceneId, styles, sessionId: incomingSessionId, generationId } = request.body as { photo?: string; sceneId?: string; styles?: Array<{ id?: string }>; sessionId?: string; generationId?: string }
       sessionId = incomingSessionId
       logger.info('generation.request_received', {
         requestId: id,
@@ -82,65 +87,131 @@ export function createGenerationRouter(logger: Logger, paymentStore: PaymentOrde
         model,
         styleCount: Array.isArray(styles) ? styles.length : 0,
         styleIds: Array.isArray(styles) ? styles.map((style) => style.id).filter((value): value is string => typeof value === 'string').slice(0, 4) : [],
+        sceneId,
         photoBytes: typeof photo === 'string' ? Buffer.byteLength(photo, 'utf8') : 0,
       })
-      if (!sessionId || !photo || !Array.isArray(styles) || styles.length < 1 || styles.length > 4) {
+      if (!sessionId || !generationId || !/^[a-f0-9-]{36}$/i.test(generationId) || !photo || !sceneId || !Array.isArray(styles) || styles.length < 1 || styles.length > 4) {
         logger.warn('generation.validation_failed', { requestId: id, sessionId, reason: 'missing_or_invalid_input', code: 'INVALID_INPUT' })
         response.status(400).json({ code: 'INVALID_INPUT', message: '请提供照片并选择 1–4 种风格', retryable: false })
         return
       }
-      const paymentToken = request.header('X-Payment-Token') ?? ''
-      if (!paymentStore.authorize(sessionId, paymentToken)) {
-        logger.warn('generation.payment_required', { requestId: id, sessionId })
-        response.status(402).json({ code: 'PAYMENT_REQUIRED', message: '请先完成微信支付后再使用图片生成', retryable: false })
+      const decoded = decodeDataUrl(photo, config.maxInputBytes)
+      const scene = scenePresets.find((preset) => preset.id === sceneId)
+      if (!scene) {
+        logger.warn('generation.validation_failed', { requestId: id, sessionId, reason: 'scene_not_allowlisted', code: 'INVALID_INPUT' })
+        response.status(400).json({ code: 'INVALID_INPUT', message: '包含不可用的目的地场景', retryable: false })
         return
       }
-      const decoded = decodeDataUrl(photo, config.maxInputBytes)
       const selected = styles.map((style) => stylePresets.find((preset) => preset.id === style.id)).filter(Boolean)
       if (selected.length !== styles.length) {
         logger.warn('generation.validation_failed', { requestId: id, sessionId, reason: 'style_not_allowlisted', code: 'INVALID_INPUT' })
         response.status(400).json({ code: 'INVALID_INPUT', message: '包含不可用的创作风格', retryable: false })
         return
       }
-      const provider = providers[config.provider]
-      const maxConcurrency = 2
-      const assets: GeneratedAsset[] = []
-      for (let i = 0; i < selected.length; i += maxConcurrency) {
-        const batch = selected.slice(i, i + maxConcurrency)
-        const batchAssets = await Promise.all(batch.map(async (style) => {
-          const styleStartedAt = Date.now()
-          logger.info('generation.style_started', { requestId: id, sessionId, provider: config.provider, model, styleId: style!.id, styleName: style!.name })
-          try {
-            const asset = await provider.generate(decoded.buffer, decoded.mimeType, style!)
-            logger.info('generation.style_succeeded', {
-              requestId: id,
-              sessionId,
-              provider: config.provider,
-              model,
-              styleId: style!.id,
-              styleName: style!.name,
-              assetId: asset.id,
-              outputType: asset.imageUrl.startsWith('data:') ? 'data_url' : 'url',
-              outputBytes: Buffer.byteLength(asset.imageUrl, 'utf8'),
-              durationMs: Date.now() - styleStartedAt,
-            })
-            return asset
-          } catch (error) {
-            const mapped = safeError(error)
-            logger.error('generation.style_failed', { requestId: id, sessionId, provider: config.provider, model, styleId: style!.id, styleName: style!.name, durationMs: Date.now() - styleStartedAt, code: mapped.code, retryable: mapped.retryable, ...mapped.details })
-            throw error
-          }
-        }))
-        assets.push(...batchAssets)
+      const requestHash = crypto.createHash('sha256')
+        .update(sessionId)
+        .update('\0')
+        .update(decoded.buffer)
+        .update('\0')
+        .update(scene.id)
+        .update('\0')
+        .update(selected.map((style) => style!.id).sort().join(','))
+        .digest('hex')
+      const paymentToken = request.header('X-Payment-Token') ?? ''
+      const reservation = paymentStore.reserveGeneration(sessionId, paymentToken, generationId, requestHash)
+      if (reservation.status === 'unauthorized') {
+        logger.warn('generation.payment_required', { requestId: id, sessionId })
+        response.status(402).json({ code: 'PAYMENT_REQUIRED', message: '请先完成微信支付后再使用图片生成', retryable: false })
+        return
       }
-      logger.info('generation.succeeded', { requestId: id, sessionId, provider: config.provider, model, styleIds: selected.map((style) => style!.id), styleNames: selected.map((style) => style!.name), assetCount: assets.length, durationMs: Date.now() - startedAt })
+      if (reservation.status === 'already_consumed') {
+        logger.warn('generation.already_consumed', { requestId: id, sessionId, generationId, existingGenerationId: reservation.generationId })
+        response.status(409).json({ code: 'GENERATION_ALREADY_CONSUMED', message: '本次支付权益已经用于其他生图任务', retryable: false, generationId: reservation.generationId })
+        return
+      }
+      if (reservation.status === 'request_mismatch') {
+        logger.warn('generation.request_mismatch', { requestId: id, sessionId, generationId })
+        response.status(409).json({ code: 'GENERATION_REQUEST_MISMATCH', message: '该生图任务的照片或风格与首次请求不一致', retryable: false })
+        return
+      }
+      if (reservation.status === 'succeeded') {
+        const completed = completedGenerations.get(generationId)
+        if (!completed || completed.expiresAt <= Date.now()) {
+          completedGenerations.delete(generationId)
+          response.status(409).json({ code: 'GENERATION_ALREADY_CONSUMED', message: '本次支付权益已经完成生图，结果恢复功能暂不可用，请联系工作人员处理', retryable: false })
+          return
+        }
+        logger.info('generation.replayed', { requestId: id, sessionId, generationId, assetCount: completed.assets.length })
+        response.json({ provider: config.provider, assets: completed.assets })
+        return
+      }
+      if (reservation.status === 'failed' || reservation.status === 'uncertain') {
+        response.status(409).json({ code: 'GENERATION_ALREADY_CONSUMED', message: '本次生图任务状态无法自动重试，请联系工作人员处理', retryable: false })
+        return
+      }
+      const provider = providers[config.provider]
+      let generation = runningGenerations.get(generationId)
+      if (reservation.status === 'processing' && !generation) {
+        response.status(409).json({ code: 'GENERATION_IN_PROGRESS', message: '生图任务正在处理，请稍后查询结果', retryable: true })
+        return
+      }
+      if (!generation && reservation.status === 'reserved') {
+        generation = generateAssets(provider, selected.map((style) => withPortraitPrompt(scene, style!)), decoded, logger, { requestId: id, sessionId, provider: config.provider, model, sceneId: scene.id })
+        runningGenerations.set(generationId, generation)
+      }
+      if (!generation) throw new Error('GENERATION_STATE_INVALID')
+      activeGenerationId = generationId
+      const assets = await generation
+      paymentStore.completeGeneration(generationId)
+      completedGenerations.set(generationId, { assets, expiresAt: Date.now() + 10 * 60_000 })
+      logger.info('generation.succeeded', { requestId: id, sessionId, provider: config.provider, model, sceneId: scene.id, styleIds: selected.map((style) => style!.id), styleNames: selected.map((style) => style!.name), assetCount: assets.length, durationMs: Date.now() - startedAt })
       response.json({ provider: config.provider, assets })
     } catch (error) {
       const mapped = safeError(error)
+      if (activeGenerationId) paymentStore.failGeneration(activeGenerationId, mapped.code, mapped.code === 'UPSTREAM_RATE_LIMIT')
       logger.error('generation.failed', { requestId: id, sessionId, provider: config.provider, model, durationMs: Date.now() - startedAt, code: mapped.code, retryable: mapped.retryable, ...mapped.details })
       response.status(mapped.code === 'INVALID_INPUT' ? 400 : 502).json({ code: mapped.code, message: mapped.message, retryable: mapped.retryable })
+    } finally {
+      if (activeGenerationId) runningGenerations.delete(activeGenerationId)
     }
   })
 
   return router
+}
+
+async function generateAssets(
+  provider: ReturnType<typeof createMockProvider>,
+  selected: Array<(typeof stylePresets)[number] | undefined>,
+  decoded: ReturnType<typeof decodeDataUrl>,
+  logger: Logger,
+  context: { requestId: string; sessionId: string; provider: string; model: string; sceneId: string },
+) {
+  const maxConcurrency = 1
+  const assets: GeneratedAsset[] = []
+  for (let i = 0; i < selected.length; i += maxConcurrency) {
+    const batch = selected.slice(i, i + maxConcurrency)
+    const batchAssets = await Promise.all(batch.map(async (style) => {
+      const styleStartedAt = Date.now()
+      logger.info('generation.style_started', { ...context, styleId: style!.id, styleName: style!.name })
+      try {
+        const asset = await provider.generate(decoded.buffer, decoded.mimeType, style!)
+        logger.info('generation.style_succeeded', {
+          ...context,
+          styleId: style!.id,
+          styleName: style!.name,
+          assetId: asset.id,
+          outputType: asset.imageUrl.startsWith('data:') ? 'data_url' : 'url',
+          outputBytes: Buffer.byteLength(asset.imageUrl, 'utf8'),
+          durationMs: Date.now() - styleStartedAt,
+        })
+        return asset
+      } catch (error) {
+        const mapped = safeError(error)
+        logger.error('generation.style_failed', { ...context, styleId: style!.id, styleName: style!.name, durationMs: Date.now() - styleStartedAt, code: mapped.code, retryable: mapped.retryable, ...mapped.details })
+        throw error
+      }
+    }))
+    assets.push(...batchAssets)
+  }
+  return assets
 }

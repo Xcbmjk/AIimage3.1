@@ -1,4 +1,4 @@
-import type { CapturedPhoto, Entitlement, GeneratedAsset, GenerationJob, PaymentOrder, ShareLink, StylePreset } from '../types'
+import type { CapturedPhoto, Entitlement, GeneratedAsset, GenerationJob, PaymentOrder, ScenePreset, ShareLink, StylePreset } from '../types'
 
 export interface EntitlementService {
   validate(code: string): Promise<Entitlement>
@@ -16,7 +16,9 @@ export interface GenerationService {
   generate(
     sessionId: string,
     paymentToken: string,
+    generationId: string,
     photo: CapturedPhoto,
+    scene: ScenePreset,
     styles: StylePreset[],
     onProgress: (jobs: GenerationJob[]) => void,
   ): Promise<GeneratedAsset[]>

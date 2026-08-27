@@ -4,6 +4,7 @@ export type KioskStage =
   | 'redeem'
   | 'camera'
   | 'review'
+  | 'scenes'
   | 'styles'
   | 'generating'
   | 'results'
@@ -31,6 +32,16 @@ export interface StylePreset {
   palette: [string, string, string]
   motif: string
   resultImage: string
+  mode: 'realistic' | 'artistic'
+}
+
+export interface ScenePreset {
+  id: string
+  name: string
+  location: string
+  description: string
+  prompt: string
+  previewImage: string
 }
 
 export type JobStatus = 'queued' | 'working' | 'complete' | 'failed'
@@ -70,10 +81,15 @@ export type GenerationErrorCode =
   | 'UPSTREAM_TIMEOUT'
   | 'UPSTREAM_BAD_RESPONSE'
   | 'GENERATION_FAILED'
+  | 'GENERATION_IN_PROGRESS'
+  | 'GENERATION_ALREADY_CONSUMED'
+  | 'GENERATION_REQUEST_MISMATCH'
 
 export interface GenerateRequest {
   sessionId: string
+  generationId: string
   photo: string
+  sceneId: string
   styles: Array<{ id: string }>
 }
 
@@ -94,7 +110,9 @@ export interface KioskSession {
   entitlement: Entitlement | null
   paymentOrder: PaymentOrder | null
   paymentToken: string | null
+  generationId: string | null
   photo: CapturedPhoto | null
+  selectedSceneId: string | null
   selectedStyleIds: string[]
   jobs: GenerationJob[]
   assets: GeneratedAsset[]

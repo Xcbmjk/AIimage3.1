@@ -6,7 +6,7 @@ import { stylePresets } from '../fixtures/styles'
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 export const mockGenerationService: GenerationService = {
-  async generate(_sessionId, _paymentToken, _photo, styles, onProgress) {
+  async generate(_sessionId, _paymentToken, _generationId, _photo, _scene, styles, onProgress) {
     if (!styles.length || styles.length > productConfig.maxStylesDefault) {
       throw new Error(`单次最多生成 ${productConfig.maxStylesDefault} 种风格`)
     }

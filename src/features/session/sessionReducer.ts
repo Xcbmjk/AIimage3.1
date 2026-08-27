@@ -6,7 +6,9 @@ export const createInitialSession = (): KioskSession => ({
   entitlement: null,
   paymentOrder: null,
   paymentToken: null,
+  generationId: null,
   photo: null,
+  selectedSceneId: null,
   selectedStyleIds: [],
   jobs: [],
   assets: [],
@@ -19,7 +21,9 @@ export type SessionAction =
   | { type: 'REDEEMED'; entitlement: Entitlement }
   | { type: 'PAYMENT_CREATED'; order: PaymentOrder }
   | { type: 'PAYMENT_CONFIRMED'; token: string }
+  | { type: 'GENERATION_STARTED'; generationId: string }
   | { type: 'PHOTO_SET'; photo: CapturedPhoto }
+  | { type: 'SELECT_SCENE'; sceneId: string }
   | { type: 'TOGGLE_STYLE'; styleId: string; maxStyles: number }
   | { type: 'JOBS_UPDATED'; jobs: GenerationJob[] }
   | { type: 'GENERATED'; assets: GeneratedAsset[] }
@@ -37,8 +41,12 @@ export function sessionReducer(state: KioskSession, action: SessionAction): Kios
       return { ...state, paymentOrder: action.order, error: null }
     case 'PAYMENT_CONFIRMED':
       return { ...state, paymentToken: action.token, stage: 'camera', error: null }
+    case 'GENERATION_STARTED':
+      return { ...state, generationId: action.generationId, stage: 'generating', error: null }
     case 'PHOTO_SET':
       return { ...state, photo: action.photo, stage: 'review', error: null }
+    case 'SELECT_SCENE':
+      return { ...state, selectedSceneId: action.sceneId, selectedStyleIds: [], stage: 'styles', error: null }
     case 'TOGGLE_STYLE': {
       const selected = state.selectedStyleIds.includes(action.styleId)
         ? state.selectedStyleIds.filter((id) => id !== action.styleId)

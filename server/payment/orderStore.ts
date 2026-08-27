@@ -2,6 +2,16 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 
+export type PaymentGeneration = {
+  id: string
+  requestHash: string
+  status: 'processing' | 'succeeded' | 'failed' | 'uncertain'
+  startedAt: string
+  completedAt?: string
+  errorCode?: string
+  retryable?: boolean
+}
+
 export type PaymentOrder = {
   id: string
   sessionId: string
@@ -12,6 +22,8 @@ export type PaymentOrder = {
   paidAt?: string
   transactionId?: string
   accessToken?: string
+  accessExpiresAt?: string
+  generation?: PaymentGeneration
 }
 
 type OrderData = { orders: PaymentOrder[] }
@@ -75,16 +87,70 @@ export class PaymentOrderStore {
       order.paidAt = new Date().toISOString()
       order.transactionId = transactionId
       order.accessToken = crypto.randomBytes(32).toString('base64url')
+      order.accessExpiresAt = new Date(Date.now() + 24 * 3600_000).toISOString()
       this.save()
     }
     return order
   }
 
   authorize(sessionId: string, accessToken: string) {
+    const order = this.findAuthorizedOrder(sessionId, accessToken)
+    return Boolean(order)
+  }
+
+  reserveGeneration(sessionId: string, accessToken: string, generationId: string, requestHash: string) {
+    const order = this.findAuthorizedOrder(sessionId, accessToken)
+    if (!order) return { status: 'unauthorized' as const }
+    const generation = order.generation
+    if (!generation) {
+      order.generation = { id: generationId, requestHash, status: 'processing', startedAt: new Date().toISOString() }
+      this.save()
+      return { status: 'reserved' as const, order }
+    }
+    if (generation.id !== generationId) return { status: 'already_consumed' as const, generationId: generation.id }
+    if (generation.requestHash !== requestHash) return { status: 'request_mismatch' as const }
+    if (generation.status === 'succeeded') return { status: 'succeeded' as const }
+    if (generation.status === 'failed' && generation.retryable) {
+      generation.status = 'processing'
+      generation.startedAt = new Date().toISOString()
+      delete generation.completedAt
+      delete generation.errorCode
+      delete generation.retryable
+      this.save()
+      return { status: 'reserved' as const, order }
+    }
+    return { status: generation.status as 'processing' | 'failed' | 'uncertain' }
+  }
+
+  completeGeneration(generationId: string) {
+    const order = this.data.orders.find((item) => item.generation?.id === generationId)
+    if (!order?.generation) return false
+    order.generation.status = 'succeeded'
+    order.generation.completedAt = new Date().toISOString()
+    delete order.generation.errorCode
+    delete order.generation.retryable
+    this.save()
+    return true
+  }
+
+  failGeneration(generationId: string, errorCode: string, retryable: boolean) {
+    const order = this.data.orders.find((item) => item.generation?.id === generationId)
+    if (!order?.generation) return false
+    order.generation.status = retryable ? 'failed' : 'uncertain'
+    order.generation.errorCode = errorCode
+    order.generation.retryable = retryable
+    order.generation.completedAt = new Date().toISOString()
+    this.save()
+    return true
+  }
+
+  private findAuthorizedOrder(sessionId: string, accessToken: string) {
     const order = this.data.orders.find((item) => item.sessionId === sessionId && item.status === 'paid' && item.accessToken)
     if (!order?.accessToken) return false
+    const expiresAt = order.accessExpiresAt ?? (order.paidAt ? new Date(new Date(order.paidAt).getTime() + 24 * 3600_000).toISOString() : undefined)
+    if (!expiresAt || new Date(expiresAt).getTime() <= Date.now()) return false
     const actual = Buffer.from(order.accessToken)
     const supplied = Buffer.from(accessToken)
-    return actual.length === supplied.length && crypto.timingSafeEqual(actual, supplied)
+    return actual.length === supplied.length && crypto.timingSafeEqual(actual, supplied) ? order : undefined
   }
 }

@@ -7,7 +7,7 @@
     "dev": "concurrently -k \"npm:dev:web\" \"npm:dev:api\"",
     "dev:web": "vite",
     "dev:api": "tsx server/index.ts",
-    "build": "tsc -b && tsc -p tsconfig.server.json && vite build",
+    "build": "tsc -b && tsc -p tsconfig.server.json && node -e \"require('node:fs').writeFileSync('dist-server/package.json', JSON.stringify({type:'commonjs'}))\" && vite build",
     "start": "node dist-server/server/index.js",
     "lint": "eslint .",
     "test": "vitest run",

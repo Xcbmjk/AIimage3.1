@@ -1,14 +1,14 @@
-import type { CapturedPhoto, GeneratedAsset, GenerationJob, StylePreset } from '../types'
+import type { CapturedPhoto, GeneratedAsset, GenerationJob, ScenePreset, StylePreset } from '../types'
 import type { GenerationService } from './contracts'
 import { trackClientEvent } from './clientLogger'
 
 type ApiError = { code?: string; message?: string; retryable?: boolean }
 
 export const httpGenerationService: GenerationService = {
-  async generate(sessionId: string, paymentToken: string, photo: CapturedPhoto, styles: StylePreset[], onProgress: (jobs: GenerationJob[]) => void) {
+  async generate(sessionId: string, paymentToken: string, generationId: string, photo: CapturedPhoto, scene: ScenePreset, styles: StylePreset[], onProgress: (jobs: GenerationJob[]) => void) {
     const controller = new AbortController()
     const startedAt = performance.now()
-    trackClientEvent('generation.started', sessionId, { styleCount: styles.length, styleIds: styles.map((style) => style.id).join(','), photoSource: photo.source })
+    trackClientEvent('generation.started', sessionId, { sceneId: scene.id, styleCount: styles.length, styleIds: styles.map((style) => style.id).join(','), photoSource: photo.source })
     const timeout = window.setTimeout(() => controller.abort(), 300_000)
     const jobs: GenerationJob[] = styles.map((style, index) => ({ id: `api-job-${index}`, styleId: style.id, status: 'queued', progress: 0 }))
     onProgress(jobs)
@@ -26,7 +26,7 @@ export const httpGenerationService: GenerationService = {
       const response = await fetch('/api/generation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Payment-Token': paymentToken },
-        body: JSON.stringify({ sessionId, photo: photo.url, styles: styles.map((style) => ({ id: style.id })) }),
+        body: JSON.stringify({ sessionId, generationId, photo: photo.url, sceneId: scene.id, styles: styles.map((style) => ({ id: style.id })) }),
         signal: controller.signal,
       })
       const payload = (await response.json()) as ApiError & { assets?: GeneratedAsset[] }

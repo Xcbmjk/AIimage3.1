@@ -20,6 +20,13 @@ describe('sessionReducer', () => {
     expect(confirmed.paymentToken).toBe('paid-token')
   })
 
+  it('keeps one generation id for the paid generation attempt', () => {
+    const initial = createInitialSession()
+    const started = sessionReducer(initial, { type: 'GENERATION_STARTED', generationId: 'generation-1' })
+    expect(started.generationId).toBe('generation-1')
+    expect(started.stage).toBe('generating')
+  })
+
   it('enforces the maximum style count', () => {
     let state: KioskSession = { ...createInitialSession(), entitlement, stage: 'styles' as const }
     state = sessionReducer(state, { type: 'TOGGLE_STYLE', styleId: 'ink', maxStyles: 4 })
@@ -29,12 +36,21 @@ describe('sessionReducer', () => {
     expect(state.selectedStyleIds).toEqual(['ink', 'gold', 'spring', 'night'])
   })
 
+  it('stores one scene and clears styles when the scene changes', () => {
+    const selected = sessionReducer({ ...createInitialSession(), selectedStyleIds: ['ink'] }, { type: 'SELECT_SCENE', sceneId: 'great-wall' })
+    expect(selected.selectedSceneId).toBe('great-wall')
+    expect(selected.selectedStyleIds).toEqual([])
+    expect(selected.stage).toBe('styles')
+  })
+
   it('clears all visitor data on reset', () => {
     const dirty = { ...createInitialSession(), entitlement, selectedStyleIds: ['ink'], stage: 'results' as const }
     const state = sessionReducer(dirty, { type: 'RESET' })
     expect(state.stage).toBe('welcome')
     expect(state.entitlement).toBeNull()
     expect(state.paymentToken).toBeNull()
+    expect(state.generationId).toBeNull()
+    expect(state.selectedSceneId).toBeNull()
     expect(state.selectedStyleIds).toEqual([])
   })
 })
