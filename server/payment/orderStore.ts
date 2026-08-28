@@ -79,6 +79,13 @@ export class PaymentOrderStore {
     return order
   }
 
+  list() {
+    for (const order of this.data.orders) {
+      if (order.status === 'pending' && new Date(order.expiresAt).getTime() < Date.now()) order.status = 'expired'
+    }
+    return [...this.data.orders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  }
+
   markPaid(id: string, transactionId: string) {
     const order = this.data.orders.find((item) => item.id === id)
     if (!order) return undefined

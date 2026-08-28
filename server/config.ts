@@ -3,6 +3,17 @@ import path from 'node:path'
 export type ServerConfig = {
   provider: 'mock' | 'gpt-image-2' | 'seedream' | 'jimeng-i2i'
   port: number
+  adminToken: string
+  adminSessionSecret: string
+  database: {
+    enabled: boolean
+    host: string
+    port: number
+    user: string
+    password: string
+    name: string
+    connectionLimit: number
+  }
   timeoutMs: number
   maxInputBytes: number
   logLevel: 'debug' | 'info' | 'warn' | 'error'
@@ -46,6 +57,17 @@ export function loadConfig(env = process.env): ServerConfig {
   const config: ServerConfig = {
     provider,
     port: Number(env.API_PORT ?? 8787),
+    adminToken: env.ADMIN_TOKEN ?? '',
+    adminSessionSecret: env.ADMIN_SESSION_SECRET ?? env.ADMIN_TOKEN ?? 'change-me-in-production',
+    database: {
+      enabled: (env.MYSQL_ENABLED ?? 'false').toLowerCase() === 'true',
+      host: env.MYSQL_HOST ?? '127.0.0.1',
+      port: Number(env.MYSQL_PORT ?? 3306),
+      user: env.MYSQL_USER ?? 'root',
+      password: env.MYSQL_PASSWORD ?? '',
+      name: env.MYSQL_DATABASE ?? 'aiimage',
+      connectionLimit: Number(env.MYSQL_CONNECTION_LIMIT ?? 10),
+    },
     timeoutMs: Number(env.AI_REQUEST_TIMEOUT_MS ?? 120_000),
     maxInputBytes: Number(env.AI_MAX_INPUT_BYTES ?? 10 * 1024 * 1024),
     logLevel: (env.LOG_LEVEL ?? 'info') as ServerConfig['logLevel'],
