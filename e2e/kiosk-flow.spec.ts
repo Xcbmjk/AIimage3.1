@@ -30,7 +30,7 @@ test.describe('山水 AI 旅拍 kiosk flow', () => {
     })
     await page.route('**/api/generation', async (route) => {
       const body = route.request().postDataJSON() as { photo: string; sceneId: string; styles: Array<{ id: string }> }
-      expect(body.sceneId).toBe('great-wall')
+      expect(body.sceneId).toBe('portrait-only')
       await new Promise((resolve) => setTimeout(resolve, 200))
       await route.fulfill({ json: { provider: 'mock', assets: body.styles.map((style, index) => ({ id: `e2e-${index}`, styleId: style.id, imageUrl: body.photo })) } })
     })
@@ -64,8 +64,6 @@ test.describe('山水 AI 旅拍 kiosk flow', () => {
     await page.locator('.shutter', { hasText: '使用示例照片' }).click()
     await expect(page.locator('.paper-screen')).toBeVisible()
     await page.locator('.primary-cta', { hasText: '使用这张' }).click()
-    await expect(page.locator('.scenes-screen')).toBeVisible()
-    await page.locator('.scene-card').nth(0).click()
     await expect(page.locator('.styles-screen')).toBeVisible()
   }
 
@@ -87,7 +85,7 @@ test.describe('山水 AI 旅拍 kiosk flow', () => {
     // ── Step 3: Camera page (demo photo) ──────────────────────────────────
     test.info().annotations.push({ type: 'step', description: 'Camera (demo photo)' })
     await expect(page.locator('.camera-screen')).toBeVisible()
-    await expect(page.locator('.step-pill')).toHaveText('02 / 06')
+    await expect(page.locator('.step-pill')).toHaveText('02 / 05')
 
     // Click the demo photo button (fallback path, no camera permission needed)
     await page.locator('.shutter', { hasText: '使用示例照片' }).click()
@@ -99,14 +97,10 @@ test.describe('山水 AI 旅拍 kiosk flow', () => {
     await expect(page.locator('.primary-cta', { hasText: '使用这张' })).toBeVisible()
     await page.locator('.primary-cta', { hasText: '使用这张' }).click()
 
-    await expect(page.locator('.scenes-screen')).toBeVisible()
-    await expect(page.locator('.scene-card')).toHaveCount(4)
-    await page.locator('.scene-card').nth(0).click()
-
-    // ── Step 4: Style selection ───────────────────────────────────────────
+    // ── Step 3: Style selection ───────────────────────────────────────────
     test.info().annotations.push({ type: 'step', description: 'Style selection' })
     await expect(page.locator('.styles-screen')).toBeVisible()
-    await expect(page.locator('.step-header h2')).toHaveText('选择创作风格')
+    await expect(page.locator('.step-header h2')).toHaveText('选择人物风格')
     // Select first style
     const styleCards = page.locator('.style-card')
     await expect(styleCards).toHaveCount(5)
@@ -126,7 +120,7 @@ test.describe('山水 AI 旅拍 kiosk flow', () => {
     // ── Step 5: Generation page ───────────────────────────────────────────
     test.info().annotations.push({ type: 'step', description: 'Generation' })
     await expect(page.locator('.generating-screen')).toBeVisible()
-    await expect(page.locator('.generating-brand')).toContainText('05 / 06')
+    await expect(page.locator('.generating-brand')).toContainText('04 / 05')
 
     // Wait for generation to complete — the page transitions to results
     // when assets are ready. With mock provider this is fast (~360ms * 10 steps).
@@ -233,15 +227,13 @@ test.describe('山水 AI 旅拍 kiosk flow', () => {
     await completeMockPayment(page)
     await page.locator('.shutter', { hasText: '使用示例照片' }).click()
     await page.locator('.primary-cta', { hasText: '使用这张' }).click()
-    await page.locator('.scene-card').nth(0).click()
-
     // On styles page, click back
     await page.locator('.icon-button').click()
     await expect(page.locator('.paper-screen')).toBeVisible()
-    await expect(page.locator('.step-header h2')).toHaveText('选择目的地')
+    await expect(page.locator('.step-header h2')).toHaveText('确认照片')
 
     // And forward again
-    await page.locator('.scene-card').nth(0).click()
+    await page.locator('.primary-cta', { hasText: '使用这张' }).click()
     await expect(page.locator('.styles-screen')).toBeVisible()
   })
 })

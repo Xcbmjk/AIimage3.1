@@ -18,4 +18,11 @@ describe('composePortraitPrompt', () => {
     expect(prompt).toContain('允许根据画面小幅调整姿势和服装')
     expect(prompt).not.toContain('保持输入人物的原始姿势')
   })
+
+  it('preserves the uploaded environment when no destination is selected', () => {
+    const prompt = composePortraitPrompt(scenePresets.find((scene) => scene.id === 'portrait-only')!, stylePresets[0])
+    expect(prompt).toContain('完整保留原始背景')
+    expect(prompt).toContain('禁止替换背景')
+    expect(prompt).not.toContain('指定目的地')
+  })
 })

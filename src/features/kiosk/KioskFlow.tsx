@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Camera, Check, ChevronLeft, Clock3, Leaf, MapPin, Maximize2, RefreshCw, ScanLine, ShieldCheck, Sparkles, Upload, WalletCards } from 'lucide-react'
+import { Camera, Check, ChevronLeft, Clock3, Leaf, Maximize2, RefreshCw, ScanLine, ShieldCheck, Sparkles, Upload, WalletCards } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { brand } from '../../config/brand'
 import { productConfig } from '../../config/product'
@@ -7,7 +7,7 @@ import { demoPhoto, stylePresets } from '../../mocks/fixtures/styles'
 import { scenePresets } from '../../mocks/fixtures/scenes'
 import { services } from '../../services'
 import { createUuid } from '../../lib/uuid'
-import type { ScenePreset, StylePreset } from '../../types'
+import type { StylePreset } from '../../types'
 import { useSession } from '../session/SessionProvider'
 
 function BrandMark({ light = false }: { light?: boolean }) {
@@ -144,7 +144,7 @@ function PaymentPage() {
   return (
     <main className="screen payment-screen">
       <ScenicBackdrop />
-      <div className="payment-top"><button className="icon-button icon-button--dark" onClick={() => dispatch({ type: 'RESET' })}><ChevronLeft /></button><BrandMark light /><span className="step-pill">01 / 06</span></div>
+      <div className="payment-top"><button className="icon-button icon-button--dark" onClick={() => dispatch({ type: 'RESET' })}><ChevronLeft /></button><BrandMark light /><span className="step-pill">01 / 05</span></div>
       <section className="payment-heading"><span className="eyebrow">UNLOCK YOUR PORTRAIT</span><h1>扫码入画</h1><p>支付完成后，镜头将自动为你开启</p></section>
       <section className="payment-ticket">
         <div className="payment-ticket__header"><span><WalletCards /> 微信支付</span><b><small>¥</small>{amount}</b></div>
@@ -216,7 +216,7 @@ function CameraPage() {
 
   return (
     <main className="screen camera-screen">
-      <div className="camera-top"><button className="icon-button icon-button--dark" onClick={() => dispatch({ type: 'GO', stage: 'welcome' })}><ChevronLeft /></button><BrandMark light /><span className="step-pill">02 / 06</span></div>
+      <div className="camera-top"><button className="icon-button icon-button--dark" onClick={() => dispatch({ type: 'GO', stage: 'welcome' })}><ChevronLeft /></button><BrandMark light /><span className="step-pill">02 / 05</span></div>
       <section className="camera-intro"><span className="eyebrow">LOOK INTO THE LENS</span><h1>请看向镜头</h1><p>支付已完成 · 现在可以开始拍摄</p></section>
       <div className="viewfinder">
         <video ref={videoRef} muted playsInline />
@@ -237,35 +237,12 @@ function ReviewPage() {
   const { state, dispatch } = useSession()
   return (
     <main className="screen paper-screen">
-      <StepHeader step="02 / 06" title="确认照片" back={() => dispatch({ type: 'GO', stage: 'camera' })} />
+      <StepHeader step="02 / 05" title="确认照片" back={() => dispatch({ type: 'GO', stage: 'camera' })} />
       <section className="review-layout">
         <div className="portrait-frame"><img src={state.photo?.url} alt="刚刚拍摄的照片" /><div className="portrait-label">此刻 · 山中</div></div>
         <div className="review-copy"><span className="eyebrow eyebrow--dark">YOUR PORTRAIT</span><h1>这一张，可以吗？</h1><p>接下来将以这张照片创作 AI 风格画像。</p></div>
-        <div className="dual-actions"><button className="secondary-cta" onClick={() => dispatch({ type: 'GO', stage: 'camera' })}><RefreshCw /> 重新拍摄</button><button className="primary-cta" onClick={() => dispatch({ type: 'GO', stage: 'scenes' })}><Check /> 使用这张</button></div>
+        <div className="dual-actions"><button className="secondary-cta" onClick={() => dispatch({ type: 'GO', stage: 'camera' })}><RefreshCw /> 重新拍摄</button><button className="primary-cta" onClick={() => dispatch({ type: 'SELECT_SCENE', sceneId: 'portrait-only' })}><Check /> 使用这张</button></div>
       </section>
-    </main>
-  )
-}
-
-function SceneCard({ scene, selected, onClick }: { scene: ScenePreset; selected: boolean; onClick: () => void }) {
-  return (
-    <button className={`scene-card ${selected ? 'scene-card--selected' : ''}`} onClick={onClick}>
-      <img src={scene.previewImage} alt={`${scene.location}场景预览`} />
-      <div className="scene-card__shade" />
-      <span className="scene-card__location"><MapPin size={15} /> {scene.location}</span>
-      <div className="scene-card__copy"><small>DESTINATION 0{scenePresets.indexOf(scene) + 1}</small><h3>{scene.name}</h3><p>{scene.description}</p></div>
-      <span className="selection-mark">{selected ? <Check size={26} /> : '+'}</span>
-    </button>
-  )
-}
-
-function ScenesPage() {
-  const { state, dispatch } = useSession()
-  return (
-    <main className="screen paper-screen scenes-screen">
-      <StepHeader step="03 / 06" title="选择目的地" back={() => dispatch({ type: 'GO', stage: 'review' })} />
-      <section className="styles-intro"><span className="eyebrow eyebrow--dark">CHOOSE YOUR DESTINATION</span><h1>这一次，去哪里？</h1><p>固定一个真实景点，再生成同一场景下的多种旅拍风格。</p></section>
-      <div className="scene-grid">{scenePresets.map((scene) => <SceneCard key={scene.id} scene={scene} selected={state.selectedSceneId === scene.id} onClick={() => dispatch({ type: 'SELECT_SCENE', sceneId: scene.id })} />)}</div>
     </main>
   )
 }
@@ -286,10 +263,10 @@ function StylesPage() {
   const { state, dispatch } = useSession()
   const maxStyles = state.entitlement?.maxStyles ?? productConfig.maxStylesDefault
   const generatingRef = useRef(false)
-  const selectedScene = scenePresets.find((scene) => scene.id === state.selectedSceneId)
+  const selectedScene = scenePresets.find((scene) => scene.id === state.selectedSceneId) ?? scenePresets.find((scene) => scene.id === 'portrait-only')!
 
   const generate = () => {
-    if (generatingRef.current || !state.photo || !selectedScene || !state.selectedStyleIds.length) return
+    if (generatingRef.current || !state.photo || !state.selectedStyleIds.length) return
     generatingRef.current = true
     const selectedStyles = stylePresets.filter((style) => state.selectedStyleIds.includes(style.id))
     if (!state.paymentToken) return
@@ -305,8 +282,8 @@ function StylesPage() {
 
   return (
     <main className="screen paper-screen styles-screen">
-      <StepHeader step="04 / 06" title="选择创作风格" back={() => dispatch({ type: 'GO', stage: 'scenes' })} />
-      <section className="styles-intro"><span className="eyebrow eyebrow--dark">{selectedScene?.location ?? 'CHOOSE YOUR STORIES'}</span><h1>同一风景，多种入画</h1><p>可选择 1–{maxStyles} 种风格。写实风格保留脸和姿势，艺术风格允许轻微调整造型。</p></section>
+      <StepHeader step="03 / 05" title="选择人物风格" back={() => dispatch({ type: 'GO', stage: 'review' })} />
+      <section className="styles-intro"><span className="eyebrow eyebrow--dark">CHOOSE YOUR PORTRAIT STYLE</span><h1>这一张，想成为什么？</h1><p>选择 1–{maxStyles} 种风格，只改变人物的画面表达，保留原始背景与构图。</p></section>
       <div className="style-grid">{stylePresets.map((style) => <StyleCard key={style.id} style={style} selected={state.selectedStyleIds.includes(style.id)} onClick={() => dispatch({ type: 'TOGGLE_STYLE', styleId: style.id, maxStyles })} />)}</div>
       <div className="sticky-action"><div><span>已选择 <b>{state.selectedStyleIds.length}</b> / {maxStyles}</span><small>{state.selectedStyleIds.length === maxStyles ? '已达到本次体验上限' : '还可选择更多风格'}</small></div><button className="primary-cta primary-cta--compact" disabled={!state.selectedStyleIds.length} onClick={generate}><Sparkles /> 开始生成 {state.selectedStyleIds.length ? `${state.selectedStyleIds.length} 张` : ''}</button></div>
     </main>
@@ -321,7 +298,7 @@ function GeneratingPage() {
   return (
     <main className="screen generating-screen">
       <ScenicBackdrop />
-      <div className="generating-brand"><BrandMark light /><span>05 / 06</span></div>
+      <div className="generating-brand"><BrandMark light /><span>04 / 05</span></div>
       <section className="generating-copy"><span className="eyebrow">AI IS PAINTING</span><h1>山河正在<br />为你落笔</h1><p>AI 正在理解光影与神态，请稍候片刻</p><strong className="generation-time-hint"><Clock3 /> 生图预计需要 30-90 秒</strong></section>
       <div className="progress-orbit"><div className="orbit-ring" style={{ '--progress': `${overall * 3.6}deg` } as React.CSSProperties}><div><b>{overall}</b><span>%</span></div></div><Sparkles className="orbit-star" /></div>
       <div className="job-list">{selectedStyles.map((style) => { const job = state.jobs.find((item) => item.styleId === style.id); return <div className="job-row" key={style.id}><span className="job-icon">{style.motif}</span><div><b>{style.name}</b><small>{job?.status === 'complete' ? '作品已完成' : job?.status === 'working' ? '正在渲染光影与细节' : '等待落笔'}</small></div><div className="mini-progress"><i style={{ width: `${job?.progress ?? 0}%` }} /></div>{job?.status === 'complete' ? <Check /> : <span>{job?.progress ?? 0}%</span>}</div> })}</div>
@@ -352,7 +329,7 @@ function ResultsPage() {
 
   return (
     <main className="screen results-screen">
-      <StepHeader step="06 / 06" title="你的山水作品" />
+      <StepHeader step="05 / 05" title="你的山水作品" />
       <section className="results-intro"><span className="eyebrow eyebrow--dark">YOUR MOUNTAIN STORIES</span><h1>这一刻，已入画</h1><p>左右切换查看你的 AI 旅拍作品</p></section>
       <div className="result-stage"><img src={activeAsset?.imageUrl} alt={activeStyle?.name ?? '生成结果'} /><div className="result-stamp">山境<br />造像</div><button className="zoom-button"><Maximize2 /></button><div className="result-caption"><small>{activeStyle?.subtitle}</small><h3>{activeStyle?.name}</h3></div></div>
       <div className="result-thumbs">{state.assets.map((asset, index) => { const style = stylePresets.find((item) => item.id === asset.styleId); return <button key={asset.id} className={index === activeIndex ? 'active' : ''} onClick={() => setActiveIndex(index)}><img src={asset.imageUrl} alt={style?.name} /><span>{style?.name}</span></button> })}</div>
@@ -389,7 +366,6 @@ export function KioskFlow() {
     case 'redeem': return <CameraPage />
     case 'camera': return <CameraPage />
     case 'review': return <ReviewPage />
-    case 'scenes': return <ScenesPage />
     case 'styles': return <StylesPage />
     case 'generating': return <GeneratingPage />
     case 'results': return <ResultsPage />

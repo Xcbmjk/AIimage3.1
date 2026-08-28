@@ -38,4 +38,12 @@ export const scenePresets: ScenePreset[] = [
     prompt: '三亚热带海岸实景，清澈碧海、细白沙滩、自然海浪和少量椰影，明亮温暖的海边日光，天空与海平线干净通透。',
     previewImage: scenePreview('南海晴光', '#56a9bd', '#16666c', '#efd49d', 'M0 360 Q180 330 360 365 T720 350 T900 360 V470 H0Z M0 470 Q230 430 470 485 T900 455 V640 H0Z'),
   },
+  {
+    id: 'portrait-only',
+    name: '原景留存',
+    location: '原始环境',
+    description: '保留上传照片中的背景、构图与光线，只调整人物的表现风格。',
+    prompt: '以输入照片为唯一场景来源，完整保留原始背景、地点特征、构图、机位、透视、人物落位和环境光线，不添加或替换景点。',
+    previewImage: scenePreview('原景留存', '#7897a3', '#263f36', '#d9b77f', 'M0 430 Q130 315 245 385 T470 345 T680 330 T900 390 V640 H0Z'),
+  },
 ]
