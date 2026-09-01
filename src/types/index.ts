@@ -55,6 +55,7 @@ export interface GenerationJob {
 
 export interface GeneratedAsset {
   id: string
+  assetId?: string
   styleId: string
   imageUrl: string
 }

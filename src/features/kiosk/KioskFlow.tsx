@@ -167,6 +167,7 @@ function CameraPage() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const [status, setStatus] = useState<'starting' | 'ready' | 'fallback'>('starting')
+  const [cameraError, setCameraError] = useState('')
   const [countdown, setCountdown] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -176,7 +177,7 @@ function CameraPage() {
     void services.camera.start(video).then((stream) => {
       streamRef.current = stream
       setStatus('ready')
-    }).catch(() => setStatus('fallback'))
+    }).catch((error) => { setCameraError(error instanceof Error ? error.message : '摄像头不可用，将使用示例照片'); setStatus('fallback') })
     return () => services.camera.stop(streamRef.current)
   }, [])
 
@@ -191,11 +192,11 @@ function CameraPage() {
   const uploadPhoto = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
-    if (!file.type.startsWith('image/')) return
-    if (file.size > 10 * 1024 * 1024) return
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) { setCameraError('仅支持 JPG、PNG 或 WebP 图片'); return }
+    if (file.size > 10 * 1024 * 1024) { setCameraError('图片不能超过 10 MB'); return }
     const reader = new FileReader()
     reader.onload = () => {
-      if (typeof reader.result === 'string') dispatch({ type: 'PHOTO_SET', photo: { url: reader.result, source: 'demo' } })
+      if (typeof reader.result === 'string') dispatch({ type: 'PHOTO_SET', photo: { url: reader.result, source: 'camera' } })
     }
     reader.readAsDataURL(file)
     event.target.value = ''
@@ -225,6 +226,7 @@ function CameraPage() {
         <div className="face-guide" /><div className="camera-hint">{status === 'fallback' ? '演示模式 · 将使用示例照片' : status === 'starting' ? '正在唤醒摄像头…' : '人物居中 · 保持自然'}</div>
         {countdown !== null && <div className="countdown">{countdown || <Sparkles />}</div>}
       </div>
+      {cameraError && <div className="camera-error" role="alert">{cameraError}</div>}
       <button className="shutter" onClick={takePhoto} disabled={status === 'starting'}><span><Camera /></span><b>{status === 'fallback' ? '使用示例照片' : '拍摄照片'}</b></button>
       <input ref={fileInputRef} className="photo-upload-input" type="file" accept="image/jpeg,image/png,image/webp" onChange={uploadPhoto} />
       <button className="upload-test-button" onClick={() => fileInputRef.current?.click()}><Upload /> 上传图片测试</button>
@@ -259,7 +261,7 @@ function StyleCard({ style, selected, onClick }: { style: StylePreset; selected:
   )
 }
 
-function StylesPage() {
+function StylesPage({ styles }: { styles: StylePreset[] }) {
   const { state, dispatch } = useSession()
   const maxStyles = state.entitlement?.maxStyles ?? productConfig.maxStylesDefault
   const generatingRef = useRef(false)
@@ -268,7 +270,7 @@ function StylesPage() {
   const generate = () => {
     if (generatingRef.current || !state.photo || !state.selectedStyleIds.length) return
     generatingRef.current = true
-    const selectedStyles = stylePresets.filter((style) => state.selectedStyleIds.includes(style.id))
+    const selectedStyles = styles.filter((style) => state.selectedStyleIds.includes(style.id))
     if (!state.paymentToken) return
     const generationId = state.generationId ?? createUuid()
     dispatch({ type: 'GENERATION_STARTED', generationId })
@@ -284,15 +286,15 @@ function StylesPage() {
     <main className="screen paper-screen styles-screen">
       <StepHeader step="03 / 05" title="选择人物风格" back={() => dispatch({ type: 'GO', stage: 'review' })} />
       <section className="styles-intro"><span className="eyebrow eyebrow--dark">CHOOSE YOUR PORTRAIT STYLE</span><h1>这一张，想成为什么？</h1><p>选择 1–{maxStyles} 种风格，只改变人物的画面表达，保留原始背景与构图。</p></section>
-      <div className="style-grid">{stylePresets.map((style) => <StyleCard key={style.id} style={style} selected={state.selectedStyleIds.includes(style.id)} onClick={() => dispatch({ type: 'TOGGLE_STYLE', styleId: style.id, maxStyles })} />)}</div>
+      <div className="style-grid">{styles.map((style) => <StyleCard key={style.id} style={style} selected={state.selectedStyleIds.includes(style.id)} onClick={() => dispatch({ type: 'TOGGLE_STYLE', styleId: style.id, maxStyles })} />)}</div>
       <div className="sticky-action"><div><span>已选择 <b>{state.selectedStyleIds.length}</b> / {maxStyles}</span><small>{state.selectedStyleIds.length === maxStyles ? '已达到本次体验上限' : '还可选择更多风格'}</small></div><button className="primary-cta primary-cta--compact" disabled={!state.selectedStyleIds.length} onClick={generate}><Sparkles /> 开始生成 {state.selectedStyleIds.length ? `${state.selectedStyleIds.length} 张` : ''}</button></div>
     </main>
   )
 }
 
-function GeneratingPage() {
-  const { state } = useSession()
-  const selectedStyles = useMemo(() => stylePresets.filter((style) => state.selectedStyleIds.includes(style.id)), [state.selectedStyleIds])
+function GeneratingPage({ styles }: { styles: StylePreset[] }) {
+  const { state, dispatch } = useSession()
+  const selectedStyles = useMemo(() => styles.filter((style) => state.selectedStyleIds.includes(style.id)), [state.selectedStyleIds, styles])
 
   const overall = state.jobs.length ? Math.round(state.jobs.reduce((sum, job) => sum + job.progress, 0) / state.jobs.length) : 0
   return (
@@ -302,18 +304,18 @@ function GeneratingPage() {
       <section className="generating-copy"><span className="eyebrow">AI IS PAINTING</span><h1>山河正在<br />为你落笔</h1><p>AI 正在理解光影与神态，请稍候片刻</p><strong className="generation-time-hint"><Clock3 /> 生图预计需要 30-90 秒</strong></section>
       <div className="progress-orbit"><div className="orbit-ring" style={{ '--progress': `${overall * 3.6}deg` } as React.CSSProperties}><div><b>{overall}</b><span>%</span></div></div><Sparkles className="orbit-star" /></div>
       <div className="job-list">{selectedStyles.map((style) => { const job = state.jobs.find((item) => item.styleId === style.id); return <div className="job-row" key={style.id}><span className="job-icon">{style.motif}</span><div><b>{style.name}</b><small>{job?.status === 'complete' ? '作品已完成' : job?.status === 'working' ? '正在渲染光影与细节' : '等待落笔'}</small></div><div className="mini-progress"><i style={{ width: `${job?.progress ?? 0}%` }} /></div>{job?.status === 'complete' ? <Check /> : <span>{job?.progress ?? 0}%</span>}</div> })}</div>
-      {state.error && <div className="generation-error"><b>这次落笔没有完成</b><span>{state.error}</span><button className="secondary-cta" onClick={() => window.location.reload()}><RefreshCw /> 重试生成</button></div>}
+      {state.error && <div className="generation-error"><b>这次落笔没有完成</b><span>{state.error}</span><button className="secondary-cta" onClick={() => dispatch({ type: 'GO', stage: 'styles' })}><RefreshCw /> 重试生成</button></div>}
       <p className="generation-note">请不要离开 · 完成后将自动展示作品</p>
     </main>
   )
 }
 
-function ResultsPage() {
+function ResultsPage({ styles }: { styles: StylePreset[] }) {
   const { state, dispatch } = useSession()
   const [activeIndex, setActiveIndex] = useState(0)
   const [sharing, setSharing] = useState(false)
   const activeAsset = state.assets[activeIndex]
-  const activeStyle = stylePresets.find((style) => style.id === activeAsset?.styleId)
+  const activeStyle = styles.find((style) => style.id === activeAsset?.styleId)
 
   const share = async () => {
     if (!state.paymentToken || sharing) return
@@ -332,7 +334,7 @@ function ResultsPage() {
       <StepHeader step="05 / 05" title="你的山水作品" />
       <section className="results-intro"><span className="eyebrow eyebrow--dark">YOUR MOUNTAIN STORIES</span><h1>这一刻，已入画</h1><p>左右切换查看你的 AI 旅拍作品</p></section>
       <div className="result-stage"><img src={activeAsset?.imageUrl} alt={activeStyle?.name ?? '生成结果'} /><div className="result-stamp">山境<br />造像</div><button className="zoom-button"><Maximize2 /></button><div className="result-caption"><small>{activeStyle?.subtitle}</small><h3>{activeStyle?.name}</h3></div></div>
-      <div className="result-thumbs">{state.assets.map((asset, index) => { const style = stylePresets.find((item) => item.id === asset.styleId); return <button key={asset.id} className={index === activeIndex ? 'active' : ''} onClick={() => setActiveIndex(index)}><img src={asset.imageUrl} alt={style?.name} /><span>{style?.name}</span></button> })}</div>
+      <div className="result-thumbs">{state.assets.map((asset, index) => { const style = styles.find((item) => item.id === asset.styleId); return <button key={asset.id} className={index === activeIndex ? 'active' : ''} onClick={() => setActiveIndex(index)}><img src={asset.imageUrl} alt={style?.name} /><span>{style?.name}</span></button> })}</div>
       {state.error && <div className="results-share-error">{state.error}</div>}
       <div className="results-actions"><button className="secondary-cta" onClick={() => dispatch({ type: 'RESET' })}><RefreshCw /> 再拍一次</button><button className="primary-cta" disabled={sharing} onClick={() => void share()}>{sharing ? <RefreshCw className="spin" /> : <ScanLine />} {sharing ? '正在准备作品' : '微信扫码保存'}</button></div>
     </main>
@@ -360,15 +362,17 @@ function DownloadPage() {
 
 export function KioskFlow() {
   const { state } = useSession()
+  const [styles, setStyles] = useState<StylePreset[]>(stylePresets)
+  useEffect(() => { void services.styles.list().then(setStyles) }, [])
   switch (state.stage) {
     case 'welcome': return <WelcomePage />
     case 'payment': return <PaymentPage />
     case 'redeem': return <CameraPage />
     case 'camera': return <CameraPage />
     case 'review': return <ReviewPage />
-    case 'styles': return <StylesPage />
-    case 'generating': return <GeneratingPage />
-    case 'results': return <ResultsPage />
+    case 'styles': return <StylesPage styles={styles} />
+    case 'generating': return <GeneratingPage styles={styles} />
+    case 'results': return <ResultsPage styles={styles} />
     case 'download': return <DownloadPage />
   }
 }

@@ -11,8 +11,12 @@ import { createJimengI2iProvider } from '../providers/jimengI2i'
 import { stylePresets } from '../../src/mocks/fixtures/styles'
 import { scenePresets } from '../../src/mocks/fixtures/scenes'
 import type { GeneratedAsset } from '../../src/types'
-import { PaymentOrderStore } from '../payment/orderStore'
+import type { PaymentOrderRepository } from '../payment/orderStore'
 import { withPortraitPrompt } from '../lib/portraitPrompt'
+import type { Database } from '../db/mysql'
+import { getPublishedStyles } from '../catalog/catalog'
+import { Semaphore } from '../lib/rateLimit'
+import { AssetStore } from '../assets/assetStore'
 
 const clientEvents = new Set([
   'session.stage_changed',
@@ -36,12 +40,13 @@ function requestId(request: Request) {
   return value && /^[a-zA-Z0-9._:-]{1,100}$/.test(value) ? value : crypto.randomUUID()
 }
 
-export function createGenerationRouter(logger: Logger, paymentStore: PaymentOrderStore) {
+export function createGenerationRouter(logger: Logger, paymentStore: PaymentOrderRepository, database?: Database | null, assetStore = new AssetStore()) {
   const config = loadConfig()
   const model = config.provider === 'gpt-image-2' ? config.gpt.model : config.provider === 'seedream' ? config.seedream.model : config.provider === 'jimeng-i2i' ? config.jimeng.reqKey : 'mock'
   const router = express.Router()
   const runningGenerations = new Map<string, Promise<GeneratedAsset[]>>()
   const completedGenerations = new Map<string, { assets: GeneratedAsset[]; expiresAt: number }>()
+  const providerSemaphore = new Semaphore(1)
   const providers = {
     mock: createMockProvider(),
     'gpt-image-2': createGptImageProvider(config),
@@ -90,7 +95,7 @@ export function createGenerationRouter(logger: Logger, paymentStore: PaymentOrde
         sceneId,
         photoBytes: typeof photo === 'string' ? Buffer.byteLength(photo, 'utf8') : 0,
       })
-      if (!sessionId || !generationId || !/^[a-f0-9-]{36}$/i.test(generationId) || !photo || !sceneId || !Array.isArray(styles) || styles.length < 1 || styles.length > 4) {
+      if (!sessionId || !generationId || !/^[a-f0-9-]{36}$/i.test(generationId) || !photo || !sceneId || !Array.isArray(styles) || styles.length < 1 || styles.length > config.maxStyles) {
         logger.warn('generation.validation_failed', { requestId: id, sessionId, reason: 'missing_or_invalid_input', code: 'INVALID_INPUT' })
         response.status(400).json({ code: 'INVALID_INPUT', message: '请提供照片并选择 1–4 种风格', retryable: false })
         return
@@ -102,7 +107,8 @@ export function createGenerationRouter(logger: Logger, paymentStore: PaymentOrde
         response.status(400).json({ code: 'INVALID_INPUT', message: '包含不可用的目的地场景', retryable: false })
         return
       }
-      const selected = styles.map((style) => stylePresets.find((preset) => preset.id === style.id)).filter(Boolean)
+      const publishedStyles = await getPublishedStyles(database)
+      const selected = styles.map((style) => publishedStyles.find((preset) => preset.id === style.id)).filter(Boolean)
       if (selected.length !== styles.length) {
         logger.warn('generation.validation_failed', { requestId: id, sessionId, reason: 'style_not_allowlisted', code: 'INVALID_INPUT' })
         response.status(400).json({ code: 'INVALID_INPUT', message: '包含不可用的创作风格', retryable: false })
@@ -118,7 +124,7 @@ export function createGenerationRouter(logger: Logger, paymentStore: PaymentOrde
         .update(selected.map((style) => style!.id).sort().join(','))
         .digest('hex')
       const paymentToken = request.header('X-Payment-Token') ?? ''
-      const reservation = paymentStore.reserveGeneration(sessionId, paymentToken, generationId, requestHash)
+      const reservation = await paymentStore.reserveGeneration(sessionId, paymentToken, generationId, requestHash, scene.id)
       if (reservation.status === 'unauthorized') {
         logger.warn('generation.payment_required', { requestId: id, sessionId })
         response.status(402).json({ code: 'PAYMENT_REQUIRED', message: '请先完成微信支付后再使用图片生成', retryable: false })
@@ -150,25 +156,39 @@ export function createGenerationRouter(logger: Logger, paymentStore: PaymentOrde
         return
       }
       const provider = providers[config.provider]
+      const generationSessionId = sessionId
       let generation = runningGenerations.get(generationId)
       if (reservation.status === 'processing' && !generation) {
         response.status(409).json({ code: 'GENERATION_IN_PROGRESS', message: '生图任务正在处理，请稍后查询结果', retryable: true })
         return
       }
       if (!generation && reservation.status === 'reserved') {
-        generation = generateAssets(provider, selected.map((style) => withPortraitPrompt(scene, style!)), decoded, logger, { requestId: id, sessionId, provider: config.provider, model, sceneId: scene.id })
+        generation = providerSemaphore.run(() => generateAssets(provider, selected.map((style) => withPortraitPrompt(scene, style!)), decoded, logger, { requestId: id, sessionId: generationSessionId!, provider: config.provider, model, sceneId: scene.id }))
         runningGenerations.set(generationId, generation)
       }
       if (!generation) throw new Error('GENERATION_STATE_INVALID')
       activeGenerationId = generationId
       const assets = await generation
-      paymentStore.completeGeneration(generationId)
-      completedGenerations.set(generationId, { assets, expiresAt: Date.now() + 10 * 60_000 })
+      const persistedAssets = await Promise.all(assets.map(async (asset) => {
+        try {
+          const decodedAsset = decodeDataUrl(asset.imageUrl, 15 * 1024 * 1024)
+          const saved = assetStore.save(decodedAsset.buffer, decodedAsset.mimeType, 'output', 30)
+          if (database) {
+            try { await database.pool.query('INSERT IGNORE INTO assets (id, generation_id, style_id, file_path, mime_type, byte_size, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP())', [saved.id, generationId, asset.styleId, saved.relativePath, saved.mimeType, saved.byteSize, saved.expiresAt.slice(0, 19).replace('T', ' ')]) }
+            catch (error) { logger.warn('generation.asset_persist_failed', { requestId: id, generationId, styleId: asset.styleId, reason: error instanceof Error ? error.name : 'unknown' }); return asset }
+          }
+          return { ...asset, assetId: saved.id }
+        } catch {
+          return asset
+        }
+      }))
+      await paymentStore.completeGeneration(generationId)
+      completedGenerations.set(generationId, { assets: persistedAssets, expiresAt: Date.now() + 10 * 60_000 })
       logger.info('generation.succeeded', { requestId: id, sessionId, provider: config.provider, model, sceneId: scene.id, styleIds: selected.map((style) => style!.id), styleNames: selected.map((style) => style!.name), assetCount: assets.length, durationMs: Date.now() - startedAt })
-      response.json({ provider: config.provider, assets })
+      response.json({ provider: config.provider, assets: persistedAssets })
     } catch (error) {
       const mapped = safeError(error)
-      if (activeGenerationId) paymentStore.failGeneration(activeGenerationId, mapped.code, mapped.code === 'UPSTREAM_RATE_LIMIT')
+      if (activeGenerationId) await paymentStore.failGeneration(activeGenerationId, mapped.code, mapped.code === 'UPSTREAM_RATE_LIMIT')
       logger.error('generation.failed', { requestId: id, sessionId, provider: config.provider, model, durationMs: Date.now() - startedAt, code: mapped.code, retryable: mapped.retryable, ...mapped.details })
       response.status(mapped.code === 'INVALID_INPUT' ? 400 : 502).json({ code: mapped.code, message: mapped.message, retryable: mapped.retryable })
     } finally {

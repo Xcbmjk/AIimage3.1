@@ -44,7 +44,7 @@ describe('generation route payment entitlement', () => {
     const request = (id: string, styleId: string, sceneId = 'great-wall') => fetch(endpoint, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ sessionId, generationId: id, photo: 'data:image/png;base64,AA==', sceneId, styles: [{ id: styleId }] }),
+      body: JSON.stringify({ sessionId, generationId: id, photo: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', sceneId, styles: [{ id: styleId }] }),
     })
 
     const invalid = await request(generationId, 'not-allowlisted')

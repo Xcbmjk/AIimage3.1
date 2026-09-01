@@ -1,6 +1,8 @@
 import path from 'node:path'
 
 export type ServerConfig = {
+  environment: 'development' | 'production'
+  maxStyles: number
   provider: 'mock' | 'gpt-image-2' | 'seedream' | 'jimeng-i2i'
   port: number
   adminToken: string
@@ -55,6 +57,8 @@ export function loadConfig(env = process.env): ServerConfig {
   const amountFen = Number(env.PAYMENT_AMOUNT_FEN ?? 990)
   if (!Number.isInteger(amountFen) || amountFen < 1) throw new Error('PAYMENT_AMOUNT_FEN must be a positive integer')
   const config: ServerConfig = {
+    environment: env.NODE_ENV === 'production' ? 'production' : 'development',
+    maxStyles: Number(env.MAX_STYLES ?? 4),
     provider,
     port: Number(env.API_PORT ?? 8787),
     adminToken: env.ADMIN_TOKEN ?? '',
@@ -143,6 +147,10 @@ export function loadConfig(env = process.env): ServerConfig {
     if (Buffer.byteLength(config.payment.apiV3Key, 'utf8') !== 32) throw new Error('WECHAT_PAY_API_V3_KEY must be exactly 32 bytes')
     if (!config.payment.publicBaseUrl.startsWith('https://')) throw new Error('PUBLIC_BASE_URL must use HTTPS for wechat-native payment')
   }
+  const positiveIntegers: Array<[number, string]> = [[config.port, 'API_PORT'], [config.database.port, 'MYSQL_PORT'], [config.database.connectionLimit, 'MYSQL_CONNECTION_LIMIT'], [config.timeoutMs, 'AI_REQUEST_TIMEOUT_MS'], [config.maxInputBytes, 'AI_MAX_INPUT_BYTES'], [config.logRetentionDays, 'LOG_RETENTION_DAYS'], [config.shareExpiryHours, 'SHARE_EXPIRY_HOURS'], [config.maxStyles, 'MAX_STYLES']]
+  if (config.maxStyles > 4) throw new Error('MAX_STYLES must not exceed 4')
+  for (const [value, name] of positiveIntegers) if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be a positive integer`)
+  if (config.environment === 'production' && (provider === 'mock' || paymentMode === 'mock')) throw new Error('生产环境禁止使用 mock provider 或 mock payment')
   return config
 }
 

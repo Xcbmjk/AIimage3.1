@@ -6,6 +6,7 @@
 * {
   box-sizing: border-box;
 }
+.camera-error{width:min(520px,calc(100% - 32px));margin:12px auto 0;padding:10px 14px;border:1px solid #e8b8ad;border-radius:5px;background:#fff3f0;color:#a34b42;text-align:center;font-size:12px}
 
 html, body, #root {
   margin: 0;

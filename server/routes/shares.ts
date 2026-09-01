@@ -2,27 +2,41 @@ import express from 'express'
 import os from 'node:os'
 import path from 'node:path'
 import type { Logger } from '../lib/logger'
-import { PaymentOrderStore } from '../payment/orderStore'
+import type { PaymentOrderRepository } from '../payment/orderStore'
 import { ShareStore } from '../share/shareStore'
+import { AssetStore } from '../assets/assetStore'
+import type { Database } from '../db/mysql'
 
 const escapeHtml = (value: string) => value.replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]!)
 
-export function createShareRouter(store: ShareStore, paymentStore: PaymentOrderStore, logger: Logger, publicBaseUrl: string) {
+export function createShareRouter(store: ShareStore, paymentStore: PaymentOrderRepository, logger: Logger, publicBaseUrl: string, assetStore = new AssetStore(), database?: Database | null) {
   const router = express.Router()
 
-  router.post('/shares', (request, response) => {
-    const { sessionId, assets } = request.body as { sessionId?: string; assets?: Array<{ imageUrl?: string }> }
+  router.post('/shares', async (request, response) => {
+    const { sessionId, assets } = request.body as { sessionId?: string; assets?: Array<{ imageUrl?: string; assetId?: string }> }
     const paymentToken = request.header('X-Payment-Token') ?? ''
-    if (!sessionId || !paymentStore.authorize(sessionId, paymentToken)) {
+    if (!sessionId || !await paymentStore.authorize(sessionId, paymentToken)) {
       response.status(402).json({ message: '请先完成支付后再分享作品' })
       return
     }
-    if (!Array.isArray(assets) || assets.length < 1 || assets.length > 4 || assets.some((asset) => typeof asset.imageUrl !== 'string')) {
+    if (!Array.isArray(assets) || assets.length < 1 || assets.length > 4 || assets.some((asset) => typeof asset.assetId !== 'string' && typeof asset.imageUrl !== 'string')) {
       response.status(400).json({ message: '没有可分享的作品' })
       return
     }
     try {
-      const share = store.create(assets.map((asset) => asset.imageUrl!))
+      const imageUrls = await Promise.all(assets.map(async (asset) => {
+        if (!asset.assetId) {
+          if (asset.imageUrl!.startsWith('data:image/svg+xml')) throw new Error('SVG_NOT_ALLOWED')
+          return asset.imageUrl!
+        }
+        if (!/^[a-f0-9-]{36}$/i.test(asset.assetId)) throw new Error('INVALID_ASSET_ID')
+        if (database) {
+          const rows = await database.query<Array<{ filePath: string }>>('SELECT a.file_path AS filePath FROM assets a JOIN generation_jobs g ON g.id = a.generation_id JOIN orders o ON o.id = g.order_id WHERE a.id = ? AND o.session_id = ? AND a.expires_at > UTC_TIMESTAMP() LIMIT 1', [asset.assetId, sessionId])
+          if (!rows[0]) throw new Error('ASSET_NOT_OWNED')
+        }
+        return assetStore.readById(asset.assetId, 'output')
+      }))
+      const share = store.create(imageUrls.map((item) => typeof item === 'string' ? item : `data:${item.mimeType};base64,${item.buffer.toString('base64')}`))
       const url = `${shareBaseUrl(request, publicBaseUrl)}/api/shares/${share.id}`
       logger.info('share.created', { sessionId, shareId: share.id, assetCount: share.images.length, expiresAt: share.expiresAt })
       response.status(201).json({ url, expiresAt: share.expiresAt })

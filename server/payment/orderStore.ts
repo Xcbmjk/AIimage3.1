@@ -10,13 +10,14 @@ export type PaymentGeneration = {
   completedAt?: string
   errorCode?: string
   retryable?: boolean
+  attempts?: number
 }
 
 export type PaymentOrder = {
   id: string
   sessionId: string
   amountFen: number
-  status: 'pending' | 'paid' | 'expired'
+  status: 'pending' | 'paid' | 'expired' | 'refunded'
   createdAt: string
   expiresAt: string
   paidAt?: string
@@ -24,11 +25,39 @@ export type PaymentOrder = {
   accessToken?: string
   accessExpiresAt?: string
   generation?: PaymentGeneration
+  paymentMode?: 'mock' | 'wechat-native'
+  providerTradeState?: string
+  queryAttempts?: number
+  lastQueryAt?: string
+  closedAt?: string
+}
+
+export type MaybePromise<T> = T | Promise<T>
+export type GenerationReservation =
+  | { status: 'unauthorized' }
+  | { status: 'reserved'; order: PaymentOrder }
+  | { status: 'already_consumed'; generationId: string }
+  | { status: 'request_mismatch' | 'succeeded' | 'processing' | 'failed' | 'uncertain' }
+
+export interface PaymentOrderRepository {
+  create(sessionId: string, amountFen: number, paymentMode?: PaymentOrder['paymentMode']): MaybePromise<PaymentOrder>
+  find(id: string): MaybePromise<PaymentOrder | undefined>
+  list(): MaybePromise<PaymentOrder[]>
+  markPaid(id: string, transactionId: string, paidAt?: string): MaybePromise<PaymentOrder | undefined>
+  authorize(sessionId: string, accessToken: string): MaybePromise<boolean>
+  reserveGeneration(sessionId: string, accessToken: string, generationId: string, requestHash: string, sceneId?: string): MaybePromise<GenerationReservation>
+  completeGeneration(generationId: string): MaybePromise<boolean>
+  failGeneration(generationId: string, errorCode: string, retryable: boolean): MaybePromise<boolean>
+  pendingForReconciliation?(limit?: number): MaybePromise<PaymentOrder[]>
+  recordProviderState?(id: string, tradeState: string, errorCode?: string): MaybePromise<void>
+  markExpired?(id: string, closed?: boolean): MaybePromise<boolean>
+  markRefunded?(id: string): MaybePromise<boolean>
+  processPaymentNotification?(input: { notificationId: string; eventType: string; orderId: string; transactionId: string; paidAt?: string }): MaybePromise<'processed' | 'duplicate' | 'not_found' | 'conflict'>
 }
 
 type OrderData = { orders: PaymentOrder[] }
 
-export class PaymentOrderStore {
+export class PaymentOrderStore implements PaymentOrderRepository {
   private readonly filePath: string
   private data: OrderData
 
@@ -54,7 +83,7 @@ export class PaymentOrderStore {
     fs.renameSync(temporary, this.filePath)
   }
 
-  create(sessionId: string, amountFen: number) {
+  create(sessionId: string, amountFen: number, paymentMode: PaymentOrder['paymentMode'] = 'mock') {
     const now = Date.now()
     const order: PaymentOrder = {
       id: `SJ${new Date(now).toISOString().replace(/\D/g, '').slice(0, 14)}${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
@@ -63,6 +92,7 @@ export class PaymentOrderStore {
       status: 'pending',
       createdAt: new Date(now).toISOString(),
       expiresAt: new Date(now + 5 * 60_000).toISOString(),
+      paymentMode,
     }
     this.data.orders.push(order)
     this.data.orders = this.data.orders.filter((item) => Date.now() - new Date(item.createdAt).getTime() < 7 * 24 * 3600_000)
@@ -86,12 +116,12 @@ export class PaymentOrderStore {
     return [...this.data.orders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
   }
 
-  markPaid(id: string, transactionId: string) {
+  markPaid(id: string, transactionId: string, paidAt = new Date().toISOString()) {
     const order = this.data.orders.find((item) => item.id === id)
     if (!order) return undefined
     if (order.status !== 'paid') {
       order.status = 'paid'
-      order.paidAt = new Date().toISOString()
+      order.paidAt = paidAt
       order.transactionId = transactionId
       order.accessToken = crypto.randomBytes(32).toString('base64url')
       order.accessExpiresAt = new Date(Date.now() + 24 * 3600_000).toISOString()

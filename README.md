@@ -50,7 +50,25 @@ WECHAT_PAY_PUBLIC_KEY_ID=PUB_KEY_ID_...
 WECHAT_PAY_PUBLIC_KEY_PATH=secrets/wechatpay_public_key.pem
 ```
 
-订单支付状态默认持久化到 `data/payment-orders.json`。这适合单机部署；多台 kiosk 或多实例服务上线时，应将订单存储替换为数据库，并用订单号唯一索引保证回调幂等。私钥、APIv3 密钥、支付公钥文件不能放入 APK、Vite 环境变量或 Git。
+启用 `MYSQL_ENABLED=true` 时，订单、支付凭证和生图权益使用 MySQL 持久化，并通过商户订单号、微信交易号和生图任务唯一约束保证幂等。未启用 MySQL 时，开发环境仍可回退到 `data/payment-orders.json`；生产环境应启用 MySQL。私钥、APIv3 密钥、支付公钥文件不能放入 APK、Vite 环境变量或 Git。
+
+## 本地 Docker MySQL
+
+仓库提供 MySQL 5.7 Compose 配置，默认仅监听 `127.0.0.1:3307`。先创建本地密码文件：
+
+```bash
+copy .env.docker.example .env.docker.local
+```
+
+修改 `.env.docker.local` 中的两个密码后启动数据库：
+
+```bash
+docker compose --env-file .env.docker.local up -d mysql
+npm run db:migrate
+npm run db:import-json
+```
+
+应用侧 `.env.local` 使用 `MYSQL_HOST=127.0.0.1`、`MYSQL_PORT=3307`、`MYSQL_DATABASE=aiaimage`，账号密码与 `.env.docker.local` 保持一致。Docker 数据保存在命名卷 `aiimage_mysql_data`。
 
 ## 质量检查
 
