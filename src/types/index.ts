@@ -73,7 +73,7 @@ export interface PaymentOrder {
   mock: boolean
 }
 
-export type GenerationProvider = 'mock' | 'gpt-image-2' | 'seedream' | 'jimeng-i2i'
+export type GenerationProvider = 'mock' | 'gpt-image-2' | 'seedream' | 'jimeng-i2i' | 'gemini-3.1-flash-image'
 export type GenerationErrorCode =
   | 'CONFIG_ERROR'
   | 'INVALID_INPUT'

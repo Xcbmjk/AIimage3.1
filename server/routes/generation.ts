@@ -8,6 +8,7 @@ import { createGptImageProvider } from '../providers/gptImage2'
 import { createMockProvider } from '../providers/mock'
 import { createSeedreamProvider } from '../providers/seedream'
 import { createJimengI2iProvider } from '../providers/jimengI2i'
+import { createGeminiImageEditProvider } from '../providers/geminiImageEdit'
 import { stylePresets } from '../../src/mocks/fixtures/styles'
 import { scenePresets } from '../../src/mocks/fixtures/scenes'
 import type { GeneratedAsset } from '../../src/types'
@@ -42,7 +43,7 @@ function requestId(request: Request) {
 
 export function createGenerationRouter(logger: Logger, paymentStore: PaymentOrderRepository, database?: Database | null, assetStore = new AssetStore()) {
   const config = loadConfig()
-  const model = config.provider === 'gpt-image-2' ? config.gpt.model : config.provider === 'seedream' ? config.seedream.model : config.provider === 'jimeng-i2i' ? config.jimeng.reqKey : 'mock'
+  const model = config.provider === 'gpt-image-2' ? config.gpt.model : config.provider === 'seedream' ? config.seedream.model : config.provider === 'jimeng-i2i' ? config.jimeng.reqKey : config.provider === 'gemini-3.1-flash-image' ? config.gemini.model : 'mock'
   const router = express.Router()
   const runningGenerations = new Map<string, Promise<GeneratedAsset[]>>()
   const completedGenerations = new Map<string, { assets: GeneratedAsset[]; expiresAt: number }>()
@@ -52,6 +53,7 @@ export function createGenerationRouter(logger: Logger, paymentStore: PaymentOrde
     'gpt-image-2': createGptImageProvider(config),
     seedream: createSeedreamProvider(config),
     'jimeng-i2i': createJimengI2iProvider(config),
+    'gemini-3.1-flash-image': createGeminiImageEditProvider(config),
   }
 
   router.post('/events', (request, response) => {

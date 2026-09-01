@@ -70,6 +70,9 @@ npm run db:import-json
 
 应用侧 `.env.local` 使用 `MYSQL_HOST=127.0.0.1`、`MYSQL_PORT=3307`、`MYSQL_DATABASE=aiaimage`，账号密码与 `.env.docker.local` 保持一致。Docker 数据保存在命名卷 `aiimage_mysql_data`。
 
+需要由数据库管理员手工执行 SQL 时，请按
+[server/db/sql/README.md](server/db/sql/README.md) 的顺序运行完整 Schema、增量升级和目录初始化脚本。
+
 ## 质量检查
 
 ```bash
@@ -115,6 +118,14 @@ VOLC_SECRET_ACCESS_KEY=火山引擎SecretAccessKey
 JIMENG_SCALE=0.5
 JIMENG_WIDTH=1024
 JIMENG_HEIGHT=1536
+
+# Gemini 3.1 Flash Image：上传原图后进行 Edit 修图
+AI_PROVIDER=gemini-3.1-flash-image
+VITE_GENERATION_MODE=api
+GEMINI_IMAGE_BASE_URL=https://deepcoding.sbs/v1
+GEMINI_IMAGE_API_KEY=服务端密钥
+GEMINI_IMAGE_MODEL=gemini-3.1-flash-image
+GEMINI_IMAGE_ENDPOINT=/chat/completions
 ```
 
 启动前后端：
@@ -126,7 +137,7 @@ npm run dev
 
 前端仍运行在 `http://localhost:5173`，API 服务运行在 `http://127.0.0.1:8787`，Vite 会自动代理 `/api`。生产构建后使用 `npm run start`，Node 服务会同时托管 `dist` 和 API。
 
-GPT Image 2 适配器发送 `multipart/form-data`，支持上游返回 `data[0].b64_json` 或 `data[0].url`。Seedream 适配器发送 JSON，并兼容 `data[0]`/`images[0]` 的 base64 或 URL 返回。即梦图生图适配器使用火山引擎 AK/SK 在 Node 服务端签名，提交 `jimeng_i2i_v30` 异步任务并在适配器内部查询至完成；前端流程不变。各服务的真实图片进度通常不是流式百分比，页面上的进度是有界的等待反馈，不代表供应商实际进度。
+GPT Image 2 适配器发送 `multipart/form-data`，支持上游返回 `data[0].b64_json` 或 `data[0].url`。Seedream 适配器发送 JSON，并兼容 `data[0]`/`images[0]` 的 base64 或 URL 返回。即梦图生图适配器使用火山引擎 AK/SK 在 Node 服务端签名，提交 `jimeng_i2i_v30` 异步任务并在适配器内部查询至完成。Gemini 适配器使用 OpenAI 兼容聊天接口，将游客原图和数据库风格提示词作为 Edit 修图请求提交，并从 `choices[0].message.content` 的图片 Data URI 中提取 JPEG、PNG 或 WebP 结果；它不支持本站的纯文本空白生图流程。前端流程不变。各服务的真实图片进度通常不是流式百分比，页面上的进度是有界的等待反馈，不代表供应商实际进度。
 
 也可以用项目自带脚本直接测试 GPT Image 2 图片编辑。脚本会自动查找 `test/` 或 `src/test/` 下的第一张图片，并把结果保存到 `test/output/`：
 
@@ -142,7 +153,7 @@ npm run test:gpt-image-2
 npm run test:gpt-image-2 -- --input src/test/你的图片.png --output test/output/result.png --prompt "保留人物不变，把背景改成雪山日落"
 ```
 
-API Key、火山引擎 AK/SK 只能写入 `.env.local` 或部署平台的服务端密钥配置，不能使用 `VITE_GPT_IMAGE_API_KEY`、`VITE_ARK_API_KEY`、`VITE_VOLC_ACCESS_KEY_ID` 等前端变量。
+API Key、火山引擎 AK/SK 只能写入 `.env.local` 或部署平台的服务端密钥配置，不能使用 `VITE_GPT_IMAGE_API_KEY`、`VITE_ARK_API_KEY`、`VITE_VOLC_ACCESS_KEY_ID`、`VITE_GEMINI_IMAGE_API_KEY` 等前端变量。
 
 ## 生图日志
 

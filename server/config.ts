@@ -3,7 +3,7 @@ import path from 'node:path'
 export type ServerConfig = {
   environment: 'development' | 'production'
   maxStyles: number
-  provider: 'mock' | 'gpt-image-2' | 'seedream' | 'jimeng-i2i'
+  provider: 'mock' | 'gpt-image-2' | 'seedream' | 'jimeng-i2i' | 'gemini-3.1-flash-image'
   port: number
   adminToken: string
   adminSessionSecret: string
@@ -26,6 +26,7 @@ export type ServerConfig = {
   gpt: { baseUrl: string; apiKey: string; model: string; endpoint: string; size: string; responseFormat: string }
   seedream: { baseUrl: string; apiKey: string; model: string; endpoint: string; size: string; responseFormat: string; watermark: boolean }
   jimeng: { baseUrl: string; accessKeyId: string; secretAccessKey: string; reqKey: string; scale: number; width: number; height: number; pollIntervalMs: number; pollTimeoutMs: number }
+  gemini: { baseUrl: string; apiKey: string; model: string; endpoint: string }
   payment: {
     mode: 'mock' | 'wechat-native'
     amountFen: number
@@ -51,7 +52,7 @@ const bool = (value: string | undefined, fallback: boolean) => value === undefin
 
 export function loadConfig(env = process.env): ServerConfig {
   const provider = (env.AI_PROVIDER ?? 'mock') as ServerConfig['provider']
-  if (!['mock', 'gpt-image-2', 'seedream', 'jimeng-i2i'].includes(provider)) throw new Error('AI_PROVIDER must be mock, gpt-image-2, seedream, or jimeng-i2i')
+  if (!['mock', 'gpt-image-2', 'seedream', 'jimeng-i2i', 'gemini-3.1-flash-image'].includes(provider)) throw new Error('AI_PROVIDER must be mock, gpt-image-2, seedream, jimeng-i2i, or gemini-3.1-flash-image')
   const paymentMode = (env.PAYMENT_MODE ?? 'mock') as ServerConfig['payment']['mode']
   if (!['mock', 'wechat-native'].includes(paymentMode)) throw new Error('PAYMENT_MODE must be mock or wechat-native')
   const amountFen = Number(env.PAYMENT_AMOUNT_FEN ?? 990)
@@ -107,6 +108,12 @@ export function loadConfig(env = process.env): ServerConfig {
       pollIntervalMs: Number(env.JIMENG_POLL_INTERVAL_MS ?? 2000),
       pollTimeoutMs: Number(env.JIMENG_POLL_TIMEOUT_MS ?? 300000),
     },
+    gemini: {
+      baseUrl: env.GEMINI_IMAGE_BASE_URL ?? 'https://deepcoding.sbs/v1',
+      apiKey: env.GEMINI_IMAGE_API_KEY ?? '',
+      model: env.GEMINI_IMAGE_MODEL ?? 'gemini-3.1-flash-image',
+      endpoint: env.GEMINI_IMAGE_ENDPOINT ?? '/chat/completions',
+    },
     payment: {
       mode: paymentMode,
       amountFen,
@@ -134,6 +141,12 @@ export function loadConfig(env = process.env): ServerConfig {
     required(config.jimeng.accessKeyId, 'VOLC_ACCESS_KEY_ID')
     required(config.jimeng.secretAccessKey, 'VOLC_SECRET_ACCESS_KEY')
     if (config.jimeng.scale < 0 || config.jimeng.scale > 1) throw new Error('JIMENG_SCALE must be between 0 and 1')
+  }
+  if (provider === 'gemini-3.1-flash-image') {
+    required(config.gemini.baseUrl, 'GEMINI_IMAGE_BASE_URL')
+    required(config.gemini.apiKey, 'GEMINI_IMAGE_API_KEY')
+    required(config.gemini.model, 'GEMINI_IMAGE_MODEL')
+    if (!config.gemini.baseUrl.startsWith('https://')) throw new Error('GEMINI_IMAGE_BASE_URL must use HTTPS')
   }
   if (paymentMode === 'wechat-native') {
     required(config.payment.publicBaseUrl, 'PUBLIC_BASE_URL')
