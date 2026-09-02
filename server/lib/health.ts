@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import type { ServerConfig } from '../config'
+import { agentGenerationEnabled, type ServerConfig } from '../config'
 import type { Database } from '../db/mysql'
 
 export type HealthStatus = 'ok' | 'degraded' | 'down' | 'disabled'
@@ -25,6 +25,20 @@ async function checkDirectory(directory: string): Promise<HealthCheck> {
   await fs.mkdir(directory, { recursive: true })
   await fs.access(directory, fs.constants.W_OK)
   return { status: 'ok', details: { path: path.relative(process.cwd(), directory) || '.' } }
+}
+
+function collectAgentVisionCheck(config: ServerConfig): HealthCheck {
+  const setCount = [config.vision.baseUrl, config.vision.apiKey, config.vision.model].filter(Boolean).length
+  if (agentGenerationEnabled(config)) {
+    return { status: 'ok', message: 'Agent 智能生图已启用', details: { provider: config.provider } }
+  }
+  if (setCount > 0) {
+    return { status: 'degraded', message: 'VISION_* 配置不完整（需要 VISION_BASE_URL、VISION_API_KEY、VISION_MODEL），Agent 模式已禁用', details: { provider: config.provider, configured: setCount } }
+  }
+  if (config.provider === 'mock') {
+    return { status: 'disabled', message: 'Agent 模式使用 mock 回退提示词', details: { provider: config.provider } }
+  }
+  return { status: 'disabled', message: '未配置 VISION_*，Agent 模式已禁用', details: { provider: config.provider } }
 }
 
 export async function collectHealth(config: ServerConfig, database: Database | null): Promise<{ ok: boolean; status: HealthStatus; checks: Record<string, HealthCheck>; timestamp: string }> {
@@ -53,6 +67,7 @@ export async function collectHealth(config: ServerConfig, database: Database | n
     mysql,
     storage,
     aiProvider: { status: 'ok', message: '供应商配置已加载', details: { provider: config.provider, mode: 'configured' } },
+    agentVision: collectAgentVisionCheck(config),
     payment: { status: 'ok', message: '支付配置已加载', details: { mode: config.payment.mode } },
     queue: { status: database && mysql.status === 'ok' ? 'ok' : 'degraded', message: database && mysql.status === 'ok' ? '持久化队列已连接' : database ? '数据库不可用，队列暂停' : '使用 JSON 回退存储' },
   }

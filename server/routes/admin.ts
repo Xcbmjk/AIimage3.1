@@ -9,6 +9,8 @@ import type { Database } from '../db/mysql'
 import { collectHealth } from '../lib/health'
 import { stylePresets } from '../../src/mocks/fixtures/styles'
 import { AssetStore } from '../assets/assetStore'
+import { analyzeBackgroundPrompt, composeFallbackPrompt } from '../vision/analyze'
+import { validateImageBuffer } from '../lib/images'
 
 type Role = 'owner' | 'operator' | 'technical'
 type Session = { username: string; role: Role; csrf: string; expiresAt: number }
@@ -157,6 +159,94 @@ export function createAdminRouter(config: ServerConfig, store: PaymentOrderRepos
     const validHeader = (mimeType === 'image/jpeg' && bytes[0] === 0xff && bytes[1] === 0xd8) || (mimeType === 'image/png' && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) || (mimeType === 'image/webp' && bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP')
     if (!validHeader) { response.status(400).json({ code: 'INVALID_INPUT', message: '图片内容与文件类型不匹配' }); return }
     try { const saved = assetStore.save(bytes, mimeType, 'style', 3650); record(request, 'style.image_uploaded', 'style-asset', saved.id); response.status(201).json({ assetId: saved.id, path: saved.relativePath, url: `/api/catalog/style-assets/${saved.id}` }) } catch { response.status(400).json({ code: 'INVALID_INPUT', message: '图片格式不受支持' }) }
+  })
+  router.get('/api/admin/backgrounds', guard, requireAnyPermission('style:draft', 'style:write'), async (_request, response) => {
+    if (!database) { response.json({ backgrounds: [] }); return }
+    const rows = await database.query<Array<Record<string, unknown>>>(`SELECT id, background_id AS backgroundId, version, name, subtitle, description, pose_hint AS poseHint, analysis_prompt AS analysisPrompt, image_path AS imagePath, image_mime AS imageMime, enabled, sort_order AS sortOrder, analysis_status AS analysisStatus, status, created_at AS createdAt, analyzed_at AS analyzedAt, published_at AS publishedAt FROM background_versions ORDER BY sort_order, background_id, version DESC`)
+    response.json({ backgrounds: rows.map((row) => ({ ...row, previewUrl: `/api/admin/background-assets/${String(row.imagePath).split('/').pop()!.split('.')[0]}` })) })
+  })
+  router.get('/api/admin/background-assets/:id', guard, requireAnyPermission('style:draft', 'style:write'), (_request, response) => {
+    try { const asset = assetStore.readById(String(_request.params.id), 'background'); response.type(asset.mimeType).setHeader('Cache-Control', 'private, max-age=300').send(asset.buffer) }
+    catch { response.status(404).json({ code: 'NOT_FOUND', message: '背景图片不存在' }) }
+  })
+  router.post('/api/admin/background-assets', guard, requireAnyPermission('style:draft', 'style:write'), express.raw({ type: ['image/jpeg', 'image/png', 'image/webp'], limit: '15mb' }), (request, response) => {
+    if (!Buffer.isBuffer(request.body) || request.body.byteLength === 0) { response.status(400).json({ code: 'INVALID_INPUT', message: '请上传 JPG、PNG 或 WebP 背景图片' }); return }
+    const mimeType = request.header('Content-Type') ?? ''; const bytes = request.body as Buffer
+    try { validateImageBuffer(bytes, mimeType, 15 * 1024 * 1024); const saved = assetStore.save(bytes, mimeType, 'background', 3650); record(request, 'background.image_uploaded', 'background-asset', saved.id); response.status(201).json({ assetId: saved.id, path: saved.relativePath, url: `/api/catalog/background-assets/${saved.id}` }) }
+    catch { response.status(400).json({ code: 'INVALID_INPUT', message: '图片格式或尺寸不符合要求' }) }
+  })
+  const parseBackgroundInput = (body: Record<string, unknown>, overrideId?: string) => {
+    const backgroundId = overrideId ?? (typeof body.backgroundId === 'string' ? body.backgroundId.trim() : '')
+    const name = typeof body.name === 'string' ? body.name.trim() : ''
+    const subtitle = typeof body.subtitle === 'string' ? body.subtitle.trim() : ''
+    const description = typeof body.description === 'string' ? body.description.trim() : ''
+    const poseHint = typeof body.poseHint === 'string' ? body.poseHint.trim() : ''
+    const imagePath = typeof body.imagePath === 'string' ? body.imagePath.trim() : ''
+    const sortOrder = body.sortOrder === undefined ? 0 : Number(body.sortOrder)
+    const enabled = body.enabled === undefined ? true : body.enabled === true
+    const normalizedDescription = description || name
+    if (!/^[a-z0-9-]{1,80}$/.test(backgroundId) || !name || name.length > 120 || subtitle.length > 255 || normalizedDescription.length > 2000 || !poseHint || poseHint.length > 2000 || !/^background\/[a-f0-9-]{36}\.(?:jpg|png|webp)$/.test(imagePath) || !Number.isInteger(sortOrder) || sortOrder < 0 || sortOrder > 10000) return undefined
+    return { backgroundId, name, subtitle, description: normalizedDescription, poseHint, imagePath, sortOrder, enabled }
+  }
+  const createBackgroundDraft = async (request: express.Request, response: express.Response) => {
+    if (!database) { response.status(503).json({ code: 'DATABASE_REQUIRED', message: '背景配置需要启用 MySQL' }); return }
+    const input = parseBackgroundInput(request.body ?? {})
+    if (!input) { response.status(400).json({ code: 'INVALID_INPUT', message: '背景字段不完整或格式无效' }); return }
+    try {
+      const assetId = input.imagePath.split('/').pop()!.split('.')[0]
+      const asset = assetStore.readById(assetId, 'background')
+      if (asset.mimeType !== (input.imagePath.endsWith('.jpg') ? 'image/jpeg' : input.imagePath.endsWith('.png') ? 'image/png' : 'image/webp')) throw new Error('ASSET_MIME_MISMATCH')
+    } catch {
+      response.status(400).json({ code: 'INVALID_INPUT', message: '背景图片素材不存在或格式不匹配' }); return
+    }
+    const [latestRows] = await database.pool.query('SELECT COALESCE(MAX(version), 0) AS version FROM background_versions WHERE background_id = ?', [input.backgroundId])
+    const version = Number((latestRows as Array<{ version: number }>)[0]?.version ?? 0) + 1; const nowValue = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    await database.pool.query(`INSERT INTO background_versions (background_id, version, name, subtitle, description, pose_hint, image_path, image_mime, enabled, sort_order, analysis_status, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'draft', ?)`, [input.backgroundId, version, input.name, input.subtitle, input.description, input.poseHint, input.imagePath, input.imagePath.endsWith('.jpg') ? 'image/jpeg' : input.imagePath.endsWith('.png') ? 'image/png' : 'image/webp', input.enabled ? 1 : 0, input.sortOrder, nowValue])
+    record(request, 'background.draft_created', 'background', `${input.backgroundId}@${version}`); response.status(201).json({ backgroundId: input.backgroundId, version, status: 'draft' })
+  }
+  router.post('/api/admin/backgrounds', guard, requireAnyPermission('style:draft', 'style:write'), express.json({ limit: '32kb' }), createBackgroundDraft)
+  router.post('/api/admin/backgrounds/drafts', guard, requireAnyPermission('style:draft', 'style:write'), express.json({ limit: '32kb' }), createBackgroundDraft)
+  router.put('/api/admin/backgrounds/:backgroundId', guard, requireAnyPermission('style:draft', 'style:write'), express.json({ limit: '32kb' }), async (request, response) => {
+    if (!database) { response.status(503).json({ code: 'DATABASE_REQUIRED', message: '背景配置需要启用 MySQL' }); return }
+    const backgroundId = String(request.params.backgroundId); const version = Number(request.body?.version); const input = parseBackgroundInput({ ...(request.body ?? {}), backgroundId }, backgroundId)
+    if (!input || !Number.isInteger(version) || version < 1) { response.status(400).json({ code: 'INVALID_INPUT', message: '背景字段或版本无效' }); return }
+    try {
+      const assetId = input.imagePath.split('/').pop()!.split('.')[0]
+      const asset = assetStore.readById(assetId, 'background')
+      if (asset.mimeType !== (input.imagePath.endsWith('.jpg') ? 'image/jpeg' : input.imagePath.endsWith('.png') ? 'image/png' : 'image/webp')) throw new Error('ASSET_MIME_MISMATCH')
+    } catch {
+      response.status(400).json({ code: 'INVALID_INPUT', message: '背景图片素材不存在或格式不匹配' }); return
+    }
+    const [rows] = await database.pool.query('SELECT status FROM background_versions WHERE background_id = ? AND version = ? LIMIT 1', [backgroundId, version]); const target = (rows as Array<Record<string, unknown>>)[0]
+    if (!target) { response.status(404).json({ code: 'NOT_FOUND', message: '背景版本不存在' }); return }
+    if (target.status !== 'draft') { response.status(409).json({ code: 'BACKGROUND_VERSION_LOCKED', message: '已发布版本不可直接修改，请新建草稿版本' }); return }
+    await database.pool.query(`UPDATE background_versions SET name = ?, subtitle = ?, description = ?, pose_hint = ?, image_path = ?, image_mime = ?, enabled = ?, sort_order = ?, analysis_status = 'pending', analysis_prompt = NULL, analyzed_at = NULL WHERE background_id = ? AND version = ?`, [input.name, input.subtitle, input.description, input.poseHint, input.imagePath, input.imagePath.endsWith('.jpg') ? 'image/jpeg' : input.imagePath.endsWith('.png') ? 'image/png' : 'image/webp', input.enabled ? 1 : 0, input.sortOrder, backgroundId, version])
+    record(request, 'background.draft_updated', 'background', `${backgroundId}@${version}`); response.json({ backgroundId, version, status: 'draft' })
+  })
+  router.post('/api/admin/backgrounds/:backgroundId/analyze', guard, requireAnyPermission('style:draft', 'style:write'), express.json({ limit: '8kb' }), async (request, response) => {
+    if (!database) { response.status(503).json({ code: 'DATABASE_REQUIRED', message: '背景配置需要启用 MySQL' }); return }
+    const backgroundId = String(request.params.backgroundId); const version = Number(request.body?.version)
+    const rows = await database.query<Array<Record<string, unknown>>>(`SELECT id, version, name, pose_hint AS poseHint, image_path AS imagePath, image_mime AS imageMime, status FROM background_versions WHERE background_id = ? AND version = ? LIMIT 1`, [backgroundId, version])
+    const row = rows[0]; if (!row || row.status !== 'draft') { response.status(409).json({ code: 'BACKGROUND_NOT_ANALYZABLE', message: '仅草稿背景可执行视觉理解' }); return }
+    try {
+      const asset = assetStore.readById(String(row.imagePath).split('/').pop()!.split('.')[0], 'background')
+      const prompt = config.provider === 'mock'
+        ? composeFallbackPrompt(String(row.name), String(row.poseHint))
+        : await analyzeBackgroundPrompt(config, { backgroundBuffer: asset.buffer, backgroundMime: String(row.imageMime), backgroundName: String(row.name), poseHint: String(row.poseHint) })
+      await database.pool.query(`UPDATE background_versions SET analysis_prompt = ?, analysis_status = 'ready', analyzed_at = UTC_TIMESTAMP() WHERE id = ?`, [prompt, row.id])
+      record(request, 'background.analyzed', 'background', `${backgroundId}@${version}`); response.json({ backgroundId, version, analysisPrompt: prompt, analysisStatus: 'ready' })
+    } catch (error) {
+      await database.pool.query(`UPDATE background_versions SET analysis_status = 'failed' WHERE id = ?`, [row.id]); response.status(502).json({ code: 'ANALYSIS_FAILED', message: error instanceof Error ? error.message : '视觉理解失败' })
+    }
+  })
+  router.post('/api/admin/backgrounds/:backgroundId/publish', guard, requirePermission('style:write'), express.json({ limit: '8kb' }), async (request, response) => {
+    if (!database) { response.status(503).json({ code: 'DATABASE_REQUIRED', message: '背景配置需要启用 MySQL' }); return }
+    const backgroundId = String(request.params.backgroundId); const version = Number(request.body?.version)
+    const rows = await database.query<Array<Record<string, unknown>>>(`SELECT id, version, analysis_status FROM background_versions WHERE background_id = ? AND version = ? LIMIT 1`, [backgroundId, version]); const target = rows[0]
+    if (!target) { response.status(404).json({ code: 'NOT_FOUND', message: '背景版本不存在' }); return }
+    if (target.analysis_status !== 'ready') { response.status(409).json({ code: 'BACKGROUND_NOT_ANALYZED', message: '请先完成视觉理解再发布' }); return }
+    const connection = await database.pool.getConnection(); try { await connection.beginTransaction(); await connection.query(`UPDATE background_versions SET status = 'archived' WHERE background_id = ? AND status = 'published'`, [backgroundId]); await connection.query(`UPDATE background_versions SET status = 'published', published_at = UTC_TIMESTAMP() WHERE id = ?`, [target.id]); await connection.commit() } catch (error) { await connection.rollback(); throw error } finally { connection.release() }
+    record(request, 'background.published', 'background', `${backgroundId}@${version}`); response.json({ backgroundId, version, status: 'published' })
   })
   const createStyleDraft = async (request: express.Request, response: express.Response) => {
     if (!database) { response.status(503).json({ code: 'DATABASE_REQUIRED', message: '风格配置需要启用 MySQL' }); return }

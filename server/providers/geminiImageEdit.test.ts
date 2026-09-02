@@ -59,4 +59,43 @@ describe('Gemini image edit provider', () => {
       details: { provider: 'gemini-3.1-flash-image', upstreamStatus: 401, reason: undefined },
     })
   })
+
+  it('composes background and portrait into one edit request keyed to the background', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      model: 'gemini-3.1-flash-image',
+      choices: [{ message: { content: `![image](data:image/png;base64,${png})` }, finish_reason: 'stop' }],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    const config = loadConfig({ AI_PROVIDER: 'gemini-3.1-flash-image', GEMINI_IMAGE_API_KEY: 'test-key', AI_REQUEST_TIMEOUT_MS: '1000' })
+    const provider = createGeminiImageEditProvider(config)
+
+    const asset = await provider.compose!({
+      background: Buffer.from(png, 'base64'),
+      backgroundMime: 'image/png',
+      photo: Buffer.from(png, 'base64'),
+      photoMime: 'image/png',
+      prompt: '将人物合成进背景并复刻动作。',
+      backgroundId: 'gate-steps',
+    })
+
+    expect(asset.styleId).toBe('gate-steps')
+    expect(asset.imageUrl).toBe(`data:image/png;base64,${png}`)
+    const content = JSON.parse(String(fetchMock.mock.calls[0][1]?.body)).messages[0].content
+    expect(content).toHaveLength(3)
+    expect(content[1].image_url.url).toBe(`data:image/png;base64,${png}`)
+    expect(content[2].image_url.url).toBe(`data:image/png;base64,${png}`)
+    expect(content[0].text).toContain('第一张是目标背景')
+  })
+
+  it('rejects unsupported background mime types before composing', async () => {
+    const config = loadConfig({ AI_PROVIDER: 'gemini-3.1-flash-image', GEMINI_IMAGE_API_KEY: 'test-key', AI_REQUEST_TIMEOUT_MS: '1000' })
+    const provider = createGeminiImageEditProvider(config)
+    await expect(provider.compose!({
+      background: Buffer.from(png, 'base64'),
+      backgroundMime: 'image/gif',
+      photo: Buffer.from(png, 'base64'),
+      photoMime: 'image/png',
+      prompt: 'x',
+      backgroundId: 'gate-steps',
+    })).rejects.toMatchObject({ code: 'INVALID_INPUT' })
+  })
 })

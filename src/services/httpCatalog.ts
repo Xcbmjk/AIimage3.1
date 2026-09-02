@@ -1,5 +1,5 @@
 import { stylePresets } from '../mocks/fixtures/styles'
-import type { StyleService } from './contracts'
+import type { BackgroundService, StyleService } from './contracts'
 
 export const httpStyleService: StyleService = {
   async list() {
@@ -11,6 +11,21 @@ export const httpStyleService: StyleService = {
       return body.styles as Awaited<ReturnType<StyleService['list']>>
     } catch {
       return stylePresets
+    }
+  },
+}
+
+export const httpBackgroundService: BackgroundService = {
+  async list() {
+    try {
+      const response = await fetch('/api/catalog')
+      if (!response.ok) return []
+      const body = await response.json() as { backgrounds?: unknown; runtime?: { agentEnabled?: boolean } }
+      if (body.runtime && body.runtime.agentEnabled === false) return []
+      if (!Array.isArray(body.backgrounds)) return []
+      return body.backgrounds as Awaited<ReturnType<BackgroundService['list']>>
+    } catch {
+      return []
     }
   },
 }

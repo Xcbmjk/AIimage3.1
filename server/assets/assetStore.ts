@@ -8,13 +8,13 @@ const extension: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'p
 export class AssetStore {
   readonly root: string
   constructor(root = 'data/assets') { this.root = path.resolve(process.cwd(), root); fs.mkdirSync(this.root, { recursive: true }) }
-  save(buffer: Buffer, mimeType: string, category: 'source' | 'output' | 'style', retentionDays: number) {
+  save(buffer: Buffer, mimeType: string, category: 'source' | 'output' | 'style' | 'background', retentionDays: number) {
     if (!allowed.has(mimeType) || buffer.byteLength === 0) throw new Error('INVALID_ASSET')
     const id = crypto.randomUUID(); const relativePath = path.join(category, `${id}.${extension[mimeType]}`); const absolutePath = path.join(this.root, relativePath)
     fs.mkdirSync(path.dirname(absolutePath), { recursive: true }); fs.writeFileSync(absolutePath, buffer, { flag: 'wx', mode: 0o600 })
     return { id, relativePath: relativePath.replaceAll(path.sep, '/'), absolutePath, mimeType, byteSize: buffer.byteLength, expiresAt: new Date(Date.now() + retentionDays * 86400000).toISOString() }
   }
-  readById(id: string, category: 'style' | 'output') {
+  readById(id: string, category: 'style' | 'output' | 'background') {
     if (!/^[a-f0-9-]{36}$/i.test(id)) throw new Error('INVALID_ASSET_PATH')
     for (const mimeType of allowed) {
       const filePath = path.join(category, `${id}.${extension[mimeType]}`)

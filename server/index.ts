@@ -50,6 +50,7 @@ app.use((request, response, next) => {
 })
 app.use('/api/payments/orders', createRateLimiter({ windowMs: 60_000, max: 10 }))
 app.use('/api/generation', createRateLimiter({ windowMs: 60_000, max: 6, key: (request) => request.body?.sessionId || request.ip || 'unknown' }))
+app.use('/api/agent/generation', createRateLimiter({ windowMs: 60_000, max: 6, key: (request) => request.body?.sessionId || request.ip || 'unknown' }))
 app.use('/api/shares', createRateLimiter({ windowMs: 60_000, max: 10, key: (request) => request.body?.sessionId || request.ip || 'unknown' }))
 app.use('/api/admin/auth/login', createRateLimiter({ windowMs: 15 * 60_000, max: 10 }))
 app.use('/api', createPaymentRouter(config, paymentStore, logger, database))

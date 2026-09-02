@@ -5,6 +5,17 @@ import type { Database } from '../db/mysql'
 
 export type PublishedPricing = { amountFen: number; description: string }
 
+type BackgroundRow = {
+  backgroundId: string
+  name: string
+  subtitle: string
+  description: string
+  poseHint: string
+  analysisPrompt: string | null
+  imagePath: string
+  imageMime: string
+}
+
 type StyleRow = {
   styleId: string
   name: string
@@ -60,4 +71,18 @@ export async function getPublishedPricing(config: ServerConfig, database?: Datab
   if (!database) return { amountFen: config.payment.amountFen, description: config.payment.description }
   const rows = await database.query<Array<PublishedPricing>>(`SELECT amount_fen AS amountFen, description FROM pricing_versions WHERE status = 'published' ORDER BY published_at DESC, id DESC LIMIT 1`)
   return rows[0] ?? { amountFen: config.payment.amountFen, description: config.payment.description }
+}
+
+export async function getPublishedBackgrounds(database?: Database | null) {
+  if (!database) return []
+  const rows = await database.query<Array<BackgroundRow>>(`SELECT background_id AS backgroundId, name, subtitle, description, pose_hint AS poseHint, analysis_prompt AS analysisPrompt, image_path AS imagePath, image_mime AS imageMime FROM background_versions WHERE status = 'published' AND enabled = 1 AND analysis_status = 'ready' ORDER BY sort_order, background_id`)
+  return rows.map((row) => ({
+    id: row.backgroundId,
+    name: row.name,
+    subtitle: row.subtitle,
+    description: row.description,
+    poseHint: row.poseHint,
+    imageMime: row.imageMime,
+    previewImage: `/api/catalog/background-assets/${row.imagePath.split('/').pop()!.split('.')[0]}`,
+  }))
 }

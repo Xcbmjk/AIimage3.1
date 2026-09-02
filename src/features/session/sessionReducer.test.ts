@@ -43,6 +43,29 @@ describe('sessionReducer', () => {
     expect(selected.stage).toBe('styles')
   })
 
+  it('routes classic mode into style selection with the default scene', () => {
+    const state = sessionReducer({ ...createInitialSession(), stage: 'mode' }, { type: 'SELECT_MODE', mode: 'classic' })
+    expect(state.generationMode).toBe('classic')
+    expect(state.selectedSceneId).toBe('portrait-only')
+    expect(state.stage).toBe('styles')
+  })
+
+  it('routes agent mode into background selection and clears prior agent data', () => {
+    const prior = { ...createInitialSession(), stage: 'mode' as const, agentPrompt: 'stale', selectedBackgroundId: 'old', assets: [] }
+    const state = sessionReducer(prior, { type: 'SELECT_MODE', mode: 'agent' })
+    expect(state.generationMode).toBe('agent')
+    expect(state.stage).toBe('backgrounds')
+    expect(state.selectedBackgroundId).toBeNull()
+    expect(state.agentPrompt).toBeNull()
+  })
+
+  it('keeps the agent prompt and single asset after agent generation', () => {
+    const started = sessionReducer({ ...createInitialSession(), stage: 'generating' }, { type: 'AGENT_GENERATED', assets: [{ id: 'a1', styleId: 'gate-steps', imageUrl: 'data:image/png;base64,AA' }], prompt: 'dynamic prompt' })
+    expect(started.stage).toBe('results')
+    expect(started.agentPrompt).toBe('dynamic prompt')
+    expect(started.assets).toHaveLength(1)
+  })
+
   it('clears all visitor data on reset', () => {
     const dirty = { ...createInitialSession(), entitlement, selectedStyleIds: ['ink'], stage: 'results' as const }
     const state = sessionReducer(dirty, { type: 'RESET' })
@@ -52,5 +75,8 @@ describe('sessionReducer', () => {
     expect(state.generationId).toBeNull()
     expect(state.selectedSceneId).toBeNull()
     expect(state.selectedStyleIds).toEqual([])
+    expect(state.generationMode).toBe('classic')
+    expect(state.selectedBackgroundId).toBeNull()
+    expect(state.agentPrompt).toBeNull()
   })
 })

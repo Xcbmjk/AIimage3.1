@@ -93,6 +93,7 @@
 - 提示词调优记录：`2026-08-21` 将东方之门真实模式改为专用“原景换人”任务：基础图决定场景、建筑、台阶、构图、机位、坐姿、白色连衣裙及全部配饰，游客照片只提供身份和面部特征。新增服务端提示词预览接口和前端查看入口，便于现场核对实际提交给模型的完整提示词。
 - 第二次提示词调优：`2026-08-21` 根据真实结果将任务改为“高保真完整主体替换”。东方之门照片只提供场景、机位和人物落位区域；上传照片提供人物脸部身份、发型、身材、服装、鞋子与配饰。允许为了适配台阶自然调整动作，明确要求彻底清除原人物并统一透视、接触阴影、白平衡、景深、锐度和颗粒。移除保留原人物白裙、口罩、眼镜及固定坐姿的冲突约束。
 - 回退记录：`2026-08-21` 根据用户要求回退到加入东方之门之前的版本。已移除东方之门素材、双参考画板、真实/艺术模式拆分、原景换人/高保真换人、提示词预览接口和前端入口；保留长城、西湖、玉龙雪山、三亚海边四个提示词场景。上述两次东方之门调优记录作为历史保留，不代表当前运行功能。
+- 2026-09-02 关联记录：新增 Agent 智能生图模式（详见 `docs/issues/2026-09-02-agent-image-mode.md`，ISSUE-026），采用“背景动作参考图 + 人物照片”双图合成并由视觉模型实时生成融合提示词，作为本问题“专用参考图/合成管线”方向的测试版落地；当前仅 `mock` 与 `gemini-3.1-flash-image` 支持，真实供应商质量与栅格背景素材待验证，ISSUE-023 总状态保持 `处理中`。
 - 代码证据：`src/mocks/fixtures/scenes.ts`、`server/lib/portraitPrompt.ts`、`server/routes/generation.ts`、`src/features/kiosk/KioskFlow.tsx`
 - 阶段验证证据：本次回退后 `npm run lint` 通过；`npm test` 的 5 个测试文件、15 个测试全部通过；`npm run build` 通过；`npx playwright test e2e/kiosk-flow.spec.ts` 的 4 个 mock kiosk 浏览器流程全部通过。浏览器流程确认当前仅展示 4 个场景和原有 5 个风格。
 - 影响：原实现只提交人物照片和一段混合了风格与背景的固定提示词，用户不能选择具体景点，也无法按真实旅拍和艺术融合采用不同的人物保持规则。
@@ -144,6 +145,9 @@
 - 2026-08-31 完成记录：启用 MySQL 时支付、后台订单、生图权益与分享鉴权已统一使用 `MySqlPaymentOrderRepository`；新增微信交易号唯一索引、单订单单生图任务唯一索引和 `payment_notifications` 通知幂等表。支付访问 Token 使用服务端签名并仅在数据库保存 SHA-256 哈希；JSON Store 只用于未启用 MySQL 的开发回退和历史导入。ISSUE-004 的订单与支付权益部分已完成，作品/分享的彻底数据库化仍未完成，因此总状态保持 `处理中`。
 - 2026-08-31 验证证据：`npm run db:migrate` 连续执行两次成功；`aiaimage` 中 `uq_orders_transaction`、`uq_generation_order` 和 `payment_notifications` 均存在，历史 12 笔订单无冲突；运行接口创建的新订单立即出现在 MySQL，模拟支付后状态为 `paid`、Token 哈希长度为 64，重复完成支付返回相同 Token；错误会话查询返回 `403`。`npm run lint`、`npm test`（9 个文件、25 个测试）、`npm run build`、`git diff --check` 全部通过。
 - 2026-09-01 SQL 交付记录：新增 `server/db/sql/001_schema.sql`、`002_upgrade_payment.sql`、`003_seed_catalog.sql` 和执行说明。脚本面向 MySQL 5.7 和数据库 `aiaimage`，完整覆盖当前后台、订单、生图、资产、分享、退款、配置版本、审批和审计表；增量脚本通过 `information_schema` 检查字段与索引，目录种子不会覆盖已有版本。远程 MySQL 当前返回账号鉴权错误 `1045`，因此本次仅完成文件静态校验，尚未在远程库执行。
+- 2026-09-01 初始化重试记录：对 `.env.local` 指向的远程库执行幂等迁移失败。应用账号 `aiimage` 返回 `1044 ER_DBACCESS_DENIED_ERROR`，无权访问 `aiaimage`；备份配置账号 `aiaimage` 返回 `1045 ER_ACCESS_DENIED_ERROR`。仓库没有该远程实例的管理员凭据，需先由数据库管理员创建数据库、修复账号密码并授予 `aiaimage.*` 权限，再重新执行 `npm run db:migrate`。
+- 2026-09-01 账号更换重试：`.env.local` 已切换为远程 `root` 账号，配置字段格式检查正常，但 MySQL 返回 `1045 ER_ACCESS_DENIED_ERROR`，拒绝 `root@39.181.5.88` 登录。可能是密码不匹配，或该实例未允许 root 从当前公网来源连接；迁移仍未执行，数据库未发生变更。
+- 2026-09-01 18:47 +08:00 初始化成功：更新数据库账号后，`npm run db:migrate` 返回 `MySQL schema is up to date`。只读验证确认迁移版本 `v1-admin-platform` 已登记，存在 5 个启用且已发布的风格、1 个已发布价格，`uq_orders_transaction`、`uq_generation_order` 唯一索引及 `payment_notifications` 表均存在。
 
 - 优先级：`P0`
 - 状态：`处理中`
@@ -302,9 +306,12 @@
 ### ISSUE-019：直接依赖使用 `latest` 版本范围
 
 - 优先级：`P2`
-- 状态：`待处理`
+- 状态：`已解决`
 - 发现时间：`2026-08-19 22:33:13 +08:00`
-- 解决情况：尚未开始
+- 解决时间：`2026-09-01 +08:00`
+- 解决情况：`package.json` 已将运行依赖和开发依赖固定为当前 lockfile 对应的明确版本，并将 Vite 及 React 插件归入 `devDependencies`。
+- 相关提交或 PR：暂无
+- 验证证据：`npm ci --dry-run --ignore-scripts` 可解析安装；`package-lock.json` 已重新生成并与 `package.json` 同步；`npm run lint`、`npm test`、`npm run build` 通过。
 - 代码证据：`package.json:18-25`、`package.json:28-45`
 - 影响：当前 lockfile 可以稳定安装，但未来重新解析依赖或自动更新时，可能引入大量未经审查的版本升级。
 - 建议方向：在 `package.json` 中声明明确的兼容版本，并使用 Renovate 或 Dependabot 分批升级，再由 CI 验证。
@@ -316,6 +323,7 @@
 - 发现时间：`2026-08-19 22:33:13 +08:00`
 - 解决情况：尚未开始
 - 2026-08-27 部署检查记录：当前项目可采用单 Node 进程部署，`npm run build` 生成 `dist/` 和 `dist-server/`，`npm run start` 同时托管静态页面与 `/api`；本地编译产物启动后 `/api/health` 返回 `ok: true`、首页返回 200。仓库仍未提供 Dockerfile、Nginx、systemd/PM2、备份或监控配置，因此问题状态保持 `待处理`。
+- 2026-09-01 开发部署补充：新增 `npm run server:dev`，服务器启动面板可用一个命令执行 `npm ci --include=dev` 后启动 Vite 和 Express；同时声明 Node.js `>=22.12.0`。该入口仅用于当前开发式部署，完整生产运维方案仍待处理。
 - 代码证据：没有发现 Dockerfile、进程管理器配置、反向代理配置、系统服务或部署工作流。
 - 影响：TLS、开机启动、进程重启、版本回滚、数据备份、磁盘监控、浏览器全屏模式、摄像头健康、离线策略和远程设备升级都没有可重复执行的方案。
 - 建议方向：明确目标部署架构和设备运行手册，增加进程守护、TLS、健康检查、自动重启、回滚、备份、一体机启动、设备身份和远程诊断。

@@ -27,6 +27,7 @@ export type ServerConfig = {
   seedream: { baseUrl: string; apiKey: string; model: string; endpoint: string; size: string; responseFormat: string; watermark: boolean }
   jimeng: { baseUrl: string; accessKeyId: string; secretAccessKey: string; reqKey: string; scale: number; width: number; height: number; pollIntervalMs: number; pollTimeoutMs: number }
   gemini: { baseUrl: string; apiKey: string; model: string; endpoint: string }
+  vision: { baseUrl: string; apiKey: string; model: string; endpoint: string; timeoutMs: number }
   payment: {
     mode: 'mock' | 'wechat-native'
     amountFen: number
@@ -114,6 +115,13 @@ export function loadConfig(env = process.env): ServerConfig {
       model: env.GEMINI_IMAGE_MODEL ?? 'gemini-3.1-flash-image',
       endpoint: env.GEMINI_IMAGE_ENDPOINT ?? '/chat/completions',
     },
+    vision: {
+      baseUrl: env.VISION_BASE_URL ?? '',
+      apiKey: env.VISION_API_KEY ?? '',
+      model: env.VISION_MODEL ?? '',
+      endpoint: env.VISION_ENDPOINT ?? '/chat/completions',
+      timeoutMs: Number(env.VISION_REQUEST_TIMEOUT_MS ?? 60_000),
+    },
     payment: {
       mode: paymentMode,
       amountFen,
@@ -160,7 +168,7 @@ export function loadConfig(env = process.env): ServerConfig {
     if (Buffer.byteLength(config.payment.apiV3Key, 'utf8') !== 32) throw new Error('WECHAT_PAY_API_V3_KEY must be exactly 32 bytes')
     if (!config.payment.publicBaseUrl.startsWith('https://')) throw new Error('PUBLIC_BASE_URL must use HTTPS for wechat-native payment')
   }
-  const positiveIntegers: Array<[number, string]> = [[config.port, 'API_PORT'], [config.database.port, 'MYSQL_PORT'], [config.database.connectionLimit, 'MYSQL_CONNECTION_LIMIT'], [config.timeoutMs, 'AI_REQUEST_TIMEOUT_MS'], [config.maxInputBytes, 'AI_MAX_INPUT_BYTES'], [config.logRetentionDays, 'LOG_RETENTION_DAYS'], [config.shareExpiryHours, 'SHARE_EXPIRY_HOURS'], [config.maxStyles, 'MAX_STYLES']]
+  const positiveIntegers: Array<[number, string]> = [[config.port, 'API_PORT'], [config.database.port, 'MYSQL_PORT'], [config.database.connectionLimit, 'MYSQL_CONNECTION_LIMIT'], [config.timeoutMs, 'AI_REQUEST_TIMEOUT_MS'], [config.vision.timeoutMs, 'VISION_REQUEST_TIMEOUT_MS'], [config.maxInputBytes, 'AI_MAX_INPUT_BYTES'], [config.logRetentionDays, 'LOG_RETENTION_DAYS'], [config.shareExpiryHours, 'SHARE_EXPIRY_HOURS'], [config.maxStyles, 'MAX_STYLES']]
   if (config.maxStyles > 4) throw new Error('MAX_STYLES must not exceed 4')
   for (const [value, name] of positiveIntegers) if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be a positive integer`)
   if (config.environment === 'production' && (provider === 'mock' || paymentMode === 'mock')) throw new Error('生产环境禁止使用 mock provider 或 mock payment')
@@ -168,3 +176,9 @@ export function loadConfig(env = process.env): ServerConfig {
 }
 
 export const distPath = path.resolve(process.cwd(), 'dist')
+
+export function agentGenerationEnabled(config: ServerConfig): boolean {
+  if (config.provider === 'mock') return true
+  if (config.provider !== 'gemini-3.1-flash-image') return false
+  return Boolean(config.gemini.baseUrl && config.gemini.apiKey && config.gemini.model && config.gemini.baseUrl.startsWith('https://'))
+}

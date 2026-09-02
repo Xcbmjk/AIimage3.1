@@ -130,6 +130,30 @@ CREATE TABLE IF NOT EXISTS `style_versions` (
   UNIQUE KEY `uq_style_version` (`style_id`, `version`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS `background_versions` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `background_id` VARCHAR(80) NOT NULL,
+  `version` INT NOT NULL,
+  `name` VARCHAR(120) NOT NULL,
+  `subtitle` VARCHAR(255) NOT NULL,
+  `description` TEXT NOT NULL,
+  `pose_hint` TEXT NOT NULL,
+  `analysis_prompt` TEXT NULL,
+  `image_path` VARCHAR(500) NOT NULL,
+  `image_mime` VARCHAR(80) NOT NULL,
+  `enabled` TINYINT(1) NOT NULL DEFAULT 1,
+  `sort_order` INT NOT NULL DEFAULT 0,
+  `analysis_status` ENUM('pending','ready','failed') NOT NULL DEFAULT 'pending',
+  `status` ENUM('draft','published','archived') NOT NULL,
+  `created_by` BIGINT UNSIGNED NULL,
+  `created_at` DATETIME NOT NULL,
+  `analyzed_at` DATETIME NULL,
+  `published_at` DATETIME NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_background_version` (`background_id`, `version`),
+  KEY `idx_background_published` (`status`, `enabled`, `sort_order`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS `pricing_versions` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `amount_fen` INT NOT NULL,
