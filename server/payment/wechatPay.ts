@@ -19,6 +19,8 @@ export class WechatPayClient {
     this.publicKey = fs.readFileSync(config.wechatPayPublicKeyPath, 'utf8')
   }
 
+  get merchantId() { return this.config.mchId }
+
   private authorization(method: string, pathname: string, body: string) {
     const timestamp = Math.floor(Date.now() / 1000).toString()
     const nonce = crypto.randomBytes(16).toString('hex')
@@ -26,34 +28,62 @@ export class WechatPayClient {
     return `WECHATPAY2-SHA256-RSA2048 mchid="${this.config.mchId}",nonce_str="${nonce}",timestamp="${timestamp}",serial_no="${this.config.certificateSerial}",signature="${signature}"`
   }
 
-  async createNativeOrder(order: { id: string; sessionId: string; amountFen: number; expiresAt: string }) {
+  private async request(method: 'GET' | 'POST', pathname: string, body = '') {
+    const response = await fetch(`${apiHost}${pathname}`, {
+      method,
+      headers: {
+        Accept: 'application/json',
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+        'Wechatpay-Serial': this.config.wechatPayPublicKeyId,
+        Authorization: this.authorization(method, pathname, body),
+      },
+      ...(body ? { body } : {}),
+      signal: AbortSignal.timeout(10_000),
+    })
+    const responseBody = await response.text()
+    this.verifyResponse(response.headers, responseBody)
+    return { response, responseBody }
+  }
+
+  async createNativeOrder(order: { id: string; sessionId: string; amountFen: number; expiresAt: string }, description = this.config.description) {
     const pathname = '/v3/pay/transactions/native'
     const body = JSON.stringify({
       appid: this.config.appId,
       mchid: this.config.mchId,
-      description: this.config.description,
+      description,
       out_trade_no: order.id,
       time_expire: order.expiresAt,
       attach: order.sessionId,
       notify_url: `${this.config.publicBaseUrl}/api/payments/wechat/notify`,
       amount: { total: order.amountFen, currency: 'CNY' },
     })
-    const response = await fetch(`${apiHost}${pathname}`, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        'Wechatpay-Serial': this.config.wechatPayPublicKeyId,
-        Authorization: this.authorization('POST', pathname, body),
-      },
-      body,
-    })
-    const responseBody = await response.text()
-    this.verifyResponse(response.headers, responseBody)
+    const { response, responseBody } = await this.request('POST', pathname, body)
     if (!response.ok) throw new Error(`微信支付下单失败 (${response.status})`)
     const result = JSON.parse(responseBody) as { code_url?: string }
     if (!result.code_url) throw new Error('微信支付未返回付款二维码')
     return result.code_url
+  }
+
+  async queryOrder(orderId: string) {
+    const pathname = `/v3/pay/transactions/out-trade-no/${encodeURIComponent(orderId)}?mchid=${encodeURIComponent(this.config.mchId)}`
+    const { response, responseBody } = await this.request('GET', pathname)
+    if (!response.ok) throw new Error(`微信支付查单失败 (${response.status})`)
+    return JSON.parse(responseBody) as {
+      appid: string
+      mchid: string
+      out_trade_no: string
+      transaction_id?: string
+      trade_state: 'SUCCESS' | 'REFUND' | 'NOTPAY' | 'CLOSED' | 'REVOKED' | 'USERPAYING' | 'PAYERROR'
+      success_time?: string
+      amount?: { total?: number; payer_total?: number; currency?: string; payer_currency?: string }
+    }
+  }
+
+  async closeOrder(orderId: string) {
+    const pathname = `/v3/pay/transactions/out-trade-no/${encodeURIComponent(orderId)}/close`
+    const body = JSON.stringify({ mchid: this.config.mchId })
+    const { response } = await this.request('POST', pathname, body)
+    if (response.status !== 204) throw new Error(`微信支付关单失败 (${response.status})`)
   }
 
   verifyResponse(headers: Headers, body: string) {
@@ -89,7 +119,9 @@ export class WechatPayClient {
       out_trade_no: string
       transaction_id: string
       trade_state: string
+      appid: string
       mchid: string
+      success_time?: string
       amount: { total: number; currency: string }
     }
   }

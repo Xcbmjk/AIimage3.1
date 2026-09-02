@@ -1,5 +1,5 @@
 import { productConfig } from '../../config/product'
-import type { GenerationService, ShareService, StyleService } from '../../services/contracts'
+import type { AgentGenerationService, BackgroundService, GenerationService, ShareService, StyleService } from '../../services/contracts'
 import type { GeneratedAsset, GenerationJob } from '../../types'
 import { stylePresets } from '../fixtures/styles'
 
@@ -32,6 +32,37 @@ export const mockGenerationService: GenerationService = {
       styleId: style.id,
       imageUrl: style.resultImage,
     }))
+  },
+}
+
+const mockAgentPrompt = (backgroundName: string, poseHint: string) => [
+  '【模拟视觉分析】保留输入照片人物的五官、脸型与肤色身份特征。',
+  `依据所选背景「${backgroundName}」复刻其人物动作：${poseHint}`,
+  '将人物自然合成进背景，统一透视、光源方向、色温与接触阴影，消除贴纸感与白边。',
+  '高质量完整画面，肢体结构正确，无重复人物、无文字、无水印。',
+].join('\n')
+
+export const mockAgentGenerationService: AgentGenerationService = {
+  async generate(_sessionId, _paymentToken, _generationId, _photo, background, onProgress) {
+    let jobs: GenerationJob[] = [{ id: `agent-mock-${Date.now()}`, styleId: background.id, status: 'queued', progress: 0 }]
+    onProgress(jobs)
+    for (let step = 1; step <= 8; step += 1) {
+      await wait(productConfig.generationTickMs)
+      jobs = jobs.map((job) => {
+        const progress = Math.min(100, step * 14)
+        return { ...job, progress, status: progress >= 100 ? 'complete' : 'working' }
+      })
+      onProgress(jobs)
+    }
+    const prompt = mockAgentPrompt(background.name, background.poseHint)
+    const assets: GeneratedAsset[] = [{ id: `agent-asset-${Date.now()}`, styleId: background.id, imageUrl: background.previewImage }]
+    return { assets, prompt }
+  },
+}
+
+export const mockBackgroundService: BackgroundService = {
+  async list() {
+    return []
   },
 }
 

@@ -1,8 +1,21 @@
 import path from 'node:path'
 
 export type ServerConfig = {
-  provider: 'mock' | 'gpt-image-2' | 'seedream' | 'jimeng-i2i'
+  environment: 'development' | 'production'
+  maxStyles: number
+  provider: 'mock' | 'gpt-image-2' | 'seedream' | 'jimeng-i2i' | 'gemini-3.1-flash-image'
   port: number
+  adminToken: string
+  adminSessionSecret: string
+  database: {
+    enabled: boolean
+    host: string
+    port: number
+    user: string
+    password: string
+    name: string
+    connectionLimit: number
+  }
   timeoutMs: number
   maxInputBytes: number
   logLevel: 'debug' | 'info' | 'warn' | 'error'
@@ -13,6 +26,8 @@ export type ServerConfig = {
   gpt: { baseUrl: string; apiKey: string; model: string; endpoint: string; size: string; responseFormat: string }
   seedream: { baseUrl: string; apiKey: string; model: string; endpoint: string; size: string; responseFormat: string; watermark: boolean }
   jimeng: { baseUrl: string; accessKeyId: string; secretAccessKey: string; reqKey: string; scale: number; width: number; height: number; pollIntervalMs: number; pollTimeoutMs: number }
+  gemini: { baseUrl: string; apiKey: string; model: string; endpoint: string }
+  vision: { baseUrl: string; apiKey: string; model: string; endpoint: string; timeoutMs: number }
   payment: {
     mode: 'mock' | 'wechat-native'
     amountFen: number
@@ -38,14 +53,27 @@ const bool = (value: string | undefined, fallback: boolean) => value === undefin
 
 export function loadConfig(env = process.env): ServerConfig {
   const provider = (env.AI_PROVIDER ?? 'mock') as ServerConfig['provider']
-  if (!['mock', 'gpt-image-2', 'seedream', 'jimeng-i2i'].includes(provider)) throw new Error('AI_PROVIDER must be mock, gpt-image-2, seedream, or jimeng-i2i')
+  if (!['mock', 'gpt-image-2', 'seedream', 'jimeng-i2i', 'gemini-3.1-flash-image'].includes(provider)) throw new Error('AI_PROVIDER must be mock, gpt-image-2, seedream, jimeng-i2i, or gemini-3.1-flash-image')
   const paymentMode = (env.PAYMENT_MODE ?? 'mock') as ServerConfig['payment']['mode']
   if (!['mock', 'wechat-native'].includes(paymentMode)) throw new Error('PAYMENT_MODE must be mock or wechat-native')
   const amountFen = Number(env.PAYMENT_AMOUNT_FEN ?? 990)
   if (!Number.isInteger(amountFen) || amountFen < 1) throw new Error('PAYMENT_AMOUNT_FEN must be a positive integer')
   const config: ServerConfig = {
+    environment: env.NODE_ENV === 'production' ? 'production' : 'development',
+    maxStyles: Number(env.MAX_STYLES ?? 4),
     provider,
     port: Number(env.API_PORT ?? 8787),
+    adminToken: env.ADMIN_TOKEN ?? '',
+    adminSessionSecret: env.ADMIN_SESSION_SECRET ?? env.ADMIN_TOKEN ?? 'change-me-in-production',
+    database: {
+      enabled: (env.MYSQL_ENABLED ?? 'false').toLowerCase() === 'true',
+      host: env.MYSQL_HOST ?? '127.0.0.1',
+      port: Number(env.MYSQL_PORT ?? 3306),
+      user: env.MYSQL_USER ?? 'root',
+      password: env.MYSQL_PASSWORD ?? '',
+      name: env.MYSQL_DATABASE ?? 'aiimage',
+      connectionLimit: Number(env.MYSQL_CONNECTION_LIMIT ?? 10),
+    },
     timeoutMs: Number(env.AI_REQUEST_TIMEOUT_MS ?? 120_000),
     maxInputBytes: Number(env.AI_MAX_INPUT_BYTES ?? 10 * 1024 * 1024),
     logLevel: (env.LOG_LEVEL ?? 'info') as ServerConfig['logLevel'],
@@ -81,6 +109,19 @@ export function loadConfig(env = process.env): ServerConfig {
       pollIntervalMs: Number(env.JIMENG_POLL_INTERVAL_MS ?? 2000),
       pollTimeoutMs: Number(env.JIMENG_POLL_TIMEOUT_MS ?? 300000),
     },
+    gemini: {
+      baseUrl: env.GEMINI_IMAGE_BASE_URL ?? 'https://deepcoding.sbs/v1',
+      apiKey: env.GEMINI_IMAGE_API_KEY ?? '',
+      model: env.GEMINI_IMAGE_MODEL ?? 'gemini-3.1-flash-image',
+      endpoint: env.GEMINI_IMAGE_ENDPOINT ?? '/chat/completions',
+    },
+    vision: {
+      baseUrl: env.VISION_BASE_URL ?? '',
+      apiKey: env.VISION_API_KEY ?? '',
+      model: env.VISION_MODEL ?? '',
+      endpoint: env.VISION_ENDPOINT ?? '/chat/completions',
+      timeoutMs: Number(env.VISION_REQUEST_TIMEOUT_MS ?? 60_000),
+    },
     payment: {
       mode: paymentMode,
       amountFen,
@@ -109,6 +150,12 @@ export function loadConfig(env = process.env): ServerConfig {
     required(config.jimeng.secretAccessKey, 'VOLC_SECRET_ACCESS_KEY')
     if (config.jimeng.scale < 0 || config.jimeng.scale > 1) throw new Error('JIMENG_SCALE must be between 0 and 1')
   }
+  if (provider === 'gemini-3.1-flash-image') {
+    required(config.gemini.baseUrl, 'GEMINI_IMAGE_BASE_URL')
+    required(config.gemini.apiKey, 'GEMINI_IMAGE_API_KEY')
+    required(config.gemini.model, 'GEMINI_IMAGE_MODEL')
+    if (!config.gemini.baseUrl.startsWith('https://')) throw new Error('GEMINI_IMAGE_BASE_URL must use HTTPS')
+  }
   if (paymentMode === 'wechat-native') {
     required(config.payment.publicBaseUrl, 'PUBLIC_BASE_URL')
     required(config.payment.appId, 'WECHAT_PAY_APP_ID')
@@ -121,7 +168,17 @@ export function loadConfig(env = process.env): ServerConfig {
     if (Buffer.byteLength(config.payment.apiV3Key, 'utf8') !== 32) throw new Error('WECHAT_PAY_API_V3_KEY must be exactly 32 bytes')
     if (!config.payment.publicBaseUrl.startsWith('https://')) throw new Error('PUBLIC_BASE_URL must use HTTPS for wechat-native payment')
   }
+  const positiveIntegers: Array<[number, string]> = [[config.port, 'API_PORT'], [config.database.port, 'MYSQL_PORT'], [config.database.connectionLimit, 'MYSQL_CONNECTION_LIMIT'], [config.timeoutMs, 'AI_REQUEST_TIMEOUT_MS'], [config.vision.timeoutMs, 'VISION_REQUEST_TIMEOUT_MS'], [config.maxInputBytes, 'AI_MAX_INPUT_BYTES'], [config.logRetentionDays, 'LOG_RETENTION_DAYS'], [config.shareExpiryHours, 'SHARE_EXPIRY_HOURS'], [config.maxStyles, 'MAX_STYLES']]
+  if (config.maxStyles > 4) throw new Error('MAX_STYLES must not exceed 4')
+  for (const [value, name] of positiveIntegers) if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be a positive integer`)
+  if (config.environment === 'production' && (provider === 'mock' || paymentMode === 'mock')) throw new Error('生产环境禁止使用 mock provider 或 mock payment')
   return config
 }
 
 export const distPath = path.resolve(process.cwd(), 'dist')
+
+export function agentGenerationEnabled(config: ServerConfig): boolean {
+  if (config.provider === 'mock') return true
+  if (config.provider !== 'gemini-3.1-flash-image') return false
+  return Boolean(config.gemini.baseUrl && config.gemini.apiKey && config.gemini.model && config.gemini.baseUrl.startsWith('https://'))
+}

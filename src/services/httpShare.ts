@@ -8,7 +8,7 @@ export const httpShareService: ShareService = {
     const response = await fetch('/api/shares', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Payment-Token': paymentToken },
-      body: JSON.stringify({ sessionId, assets: assets.map(({ imageUrl }) => ({ imageUrl })) }),
+      body: JSON.stringify({ sessionId, assets: assets.map(({ imageUrl, assetId }) => assetId ? { assetId } : { imageUrl }) }),
     })
     const payload = await response.json() as Partial<ShareLink> & { message?: string }
     if (!response.ok || !payload.url || !payload.expiresAt) throw new Error(payload.message ?? '作品分享创建失败，请稍后重试')

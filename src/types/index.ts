@@ -4,11 +4,15 @@ export type KioskStage =
   | 'redeem'
   | 'camera'
   | 'review'
+  | 'mode'
   | 'scenes'
   | 'styles'
+  | 'backgrounds'
   | 'generating'
   | 'results'
   | 'download'
+
+export type GenerationMode = 'classic' | 'agent'
 
 export interface Entitlement {
   code: string
@@ -44,6 +48,17 @@ export interface ScenePreset {
   previewImage: string
 }
 
+export interface BackgroundPreset {
+  id: string
+  name: string
+  subtitle: string
+  description: string
+  poseHint: string
+  previewImage: string
+  analysisPrompt?: string
+  imageMime?: string
+}
+
 export type JobStatus = 'queued' | 'working' | 'complete' | 'failed'
 
 export interface GenerationJob {
@@ -55,6 +70,7 @@ export interface GenerationJob {
 
 export interface GeneratedAsset {
   id: string
+  assetId?: string
   styleId: string
   imageUrl: string
 }
@@ -72,7 +88,7 @@ export interface PaymentOrder {
   mock: boolean
 }
 
-export type GenerationProvider = 'mock' | 'gpt-image-2' | 'seedream' | 'jimeng-i2i'
+export type GenerationProvider = 'mock' | 'gpt-image-2' | 'seedream' | 'jimeng-i2i' | 'gemini-3.1-flash-image'
 export type GenerationErrorCode =
   | 'CONFIG_ERROR'
   | 'INVALID_INPUT'
@@ -98,6 +114,19 @@ export interface GenerateResponse {
   assets: GeneratedAsset[]
 }
 
+export interface AgentGenerateRequest {
+  sessionId: string
+  generationId: string
+  photo: string
+  backgroundId: string
+}
+
+export interface AgentGenerateResponse {
+  provider: GenerationProvider
+  prompt: string
+  assets: GeneratedAsset[]
+}
+
 export interface GenerationApiError {
   code: GenerationErrorCode
   message: string
@@ -111,9 +140,12 @@ export interface KioskSession {
   paymentOrder: PaymentOrder | null
   paymentToken: string | null
   generationId: string | null
+  generationMode: GenerationMode
   photo: CapturedPhoto | null
   selectedSceneId: string | null
   selectedStyleIds: string[]
+  selectedBackgroundId: string | null
+  agentPrompt: string | null
   jobs: GenerationJob[]
   assets: GeneratedAsset[]
   shareLink: ShareLink | null

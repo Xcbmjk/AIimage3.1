@@ -6,6 +6,7 @@
 * {
   box-sizing: border-box;
 }
+.camera-error{width:min(520px,calc(100% - 32px));margin:12px auto 0;padding:10px 14px;border:1px solid #e8b8ad;border-radius:5px;background:#fff3f0;color:#a34b42;text-align:center;font-size:12px}
 
 html, body, #root {
   margin: 0;
@@ -1921,4 +1922,122 @@ button {
   .qr-frame { width: 310px; height: 310px; }
   .download-steps { gap: 6px; }
   .finish-button { min-width: 320px; }
+}
+
+/* ==========================================================================
+   Mode Selection & Agent Composing (创作方式 / Agent 智能生图)
+   ========================================================================== */
+
+.mode-screen { padding-bottom: 72px; }
+
+.mode-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 26px;
+  padding: 0 52px;
+  max-width: 1080px;
+  margin: auto;
+}
+
+.mode-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 40px 34px;
+  min-height: 320px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--paper);
+  background: linear-gradient(160deg, #163e36 0%, #0d2823 100%);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-main);
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.35s ease;
+}
+
+.mode-card:hover { transform: translateY(-6px); box-shadow: var(--shadow-gilded); }
+
+.mode-card--agent { background: linear-gradient(160deg, #2a4a63 0%, #0d2823 100%); border-color: rgba(229, 184, 105, 0.5); }
+
+.mode-card__icon {
+  display: grid;
+  place-items: center;
+  width: 68px;
+  height: 68px;
+  border-radius: 20px;
+  background: var(--gold-gradient);
+  color: var(--ink-deep);
+}
+
+.mode-card__icon svg { width: 34px; height: 34px; }
+
+.mode-card__body { margin-top: auto; }
+
+.mode-card__body small { letter-spacing: 4px; color: var(--gold-bright); font: 600 11px var(--font-num); }
+
+.mode-card__body h3 { font-family: var(--font-display); font-size: 34px; letter-spacing: 5px; margin: 8px 0 10px; }
+
+.mode-card__body p { margin: 0 0 16px; color: rgba(255, 255, 255, 0.72); font-size: 14px; line-height: 1.8; }
+
+.mode-card__cta { display: inline-flex; align-items: center; gap: 6px; color: var(--gold-bright); font-size: 15px; font-weight: 600; letter-spacing: 2px; }
+
+.backgrounds-screen { padding-bottom: 180px; }
+
+.background-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 22px;
+  padding: 0 52px;
+}
+
+.background-card {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  color: white;
+  background: var(--ink-deep);
+  border: 1px solid rgba(16, 41, 37, 0.15);
+  border-radius: var(--radius-md);
+  box-shadow: 0 16px 40px rgba(16, 41, 37, 0.16);
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.background-card img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+
+.background-card:hover img { transform: scale(1.05); }
+
+.background-card--selected { outline: 6px solid var(--cinnabar); outline-offset: -6px; box-shadow: 0 25px 60px rgba(217, 68, 38, 0.35); }
+
+.background-card--selected .selection-mark { background: var(--cinnabar); border-color: var(--cinnabar-bright); color: white; box-shadow: 0 0 20px var(--cinnabar-glow); transform: scale(1.1); }
+
+.background-info { position: absolute; right: 20px; bottom: 20px; left: 20px; }
+
+.background-info small { letter-spacing: 3px; color: var(--gold-bright); font: 600 11px var(--font-num); }
+
+.background-info h3 { margin: 5px 0; font-family: var(--font-body); font-weight: 700; font-size: 22px; letter-spacing: 2px; }
+
+.background-info p { margin: 0; font-size: 12px; line-height: 1.6; opacity: 0.75; }
+
+.agent-prompt {
+  width: min(100%, 720px);
+  margin: 20px auto 0;
+  padding: 14px 18px;
+  background: rgba(16, 41, 37, 0.05);
+  border: 1px solid rgba(16, 41, 37, 0.15);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  color: var(--ink);
+}
+
+.agent-prompt summary { cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; letter-spacing: 1px; color: var(--jade); }
+
+.agent-prompt pre { margin: 12px 0 0; white-space: pre-wrap; word-break: break-word; font: 12px/1.7 var(--font-num); color: rgba(16, 41, 37, 0.82); }
+
+@media (max-width: 900px) {
+  .mode-grid { grid-template-columns: 1fr; padding: 0 20px; }
+  .background-grid { grid-template-columns: 1fr 1fr; padding: 0 20px; gap: 14px; }
 }

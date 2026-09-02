@@ -1,4 +1,4 @@
-import type { CapturedPhoto, Entitlement, GeneratedAsset, GenerationJob, PaymentOrder, ScenePreset, ShareLink, StylePreset } from '../types'
+import type { BackgroundPreset, CapturedPhoto, Entitlement, GeneratedAsset, GenerationJob, PaymentOrder, ScenePreset, ShareLink, StylePreset } from '../types'
 
 export interface EntitlementService {
   validate(code: string): Promise<Entitlement>
@@ -24,6 +24,17 @@ export interface GenerationService {
   ): Promise<GeneratedAsset[]>
 }
 
+export interface AgentGenerationService {
+  generate(
+    sessionId: string,
+    paymentToken: string,
+    generationId: string,
+    photo: CapturedPhoto,
+    background: BackgroundPreset,
+    onProgress: (jobs: GenerationJob[]) => void,
+  ): Promise<{ assets: GeneratedAsset[]; prompt: string }>
+}
+
 export interface PaymentService {
   create(sessionId: string): Promise<PaymentOrder>
   status(orderId: string, sessionId: string): Promise<{ status: 'pending' | 'paid' | 'expired'; accessToken?: string }>
@@ -35,4 +46,8 @@ export interface ShareService {
 
 export interface StyleService {
   list(): Promise<StylePreset[]>
+}
+
+export interface BackgroundService {
+  list(): Promise<BackgroundPreset[]>
 }

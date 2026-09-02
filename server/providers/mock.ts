@@ -8,4 +8,7 @@ export const createMockProvider = (): ImageProvider => ({
     const fixture = stylePresets.find((item) => item.id === style.id)
     return { id: `mock-${style.id}-${Date.now()}`, styleId: style.id, imageUrl: fixture?.resultImage ?? style.resultImage }
   },
+  async compose({ background, backgroundMime, backgroundId }): Promise<GeneratedAsset> {
+    return { id: `mock-agent-${backgroundId}-${Date.now()}`, styleId: backgroundId, imageUrl: `data:${backgroundMime};base64,${background.toString('base64')}` }
+  },
 })
