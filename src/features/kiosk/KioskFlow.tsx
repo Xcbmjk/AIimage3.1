@@ -83,14 +83,18 @@ function PaymentPage() {
   const creatingRef = useRef(false)
   const [remaining, setRemaining] = useState(0)
   const [checking, setChecking] = useState(false)
+  const [paymentStatus, setPaymentStatus] = useState<'creating' | 'pending' | 'paid' | 'expired' | 'failed'>('creating')
 
   useEffect(() => {
     if (state.paymentOrder || creatingRef.current) return
     creatingRef.current = true
+    setPaymentStatus('creating')
     void services.payment.create(state.id).then((order) => {
       dispatch({ type: 'PAYMENT_CREATED', order })
+      setPaymentStatus('pending')
     }).catch((error) => {
       creatingRef.current = false
+      setPaymentStatus('failed')
       dispatch({ type: 'ERROR', message: error instanceof Error ? error.message : '支付服务暂时不可用' })
     })
   }, [dispatch, state.id, state.paymentOrder])
@@ -111,10 +115,11 @@ function PaymentPage() {
     const check = async () => {
       try {
         const result = await services.payment.status(order.orderId, state.id)
-        if (active && result.status === 'paid' && result.accessToken) dispatch({ type: 'PAYMENT_CONFIRMED', token: result.accessToken })
-        if (active && result.status === 'expired') dispatch({ type: 'ERROR', message: '支付二维码已过期，请返回后重新发起体验' })
+        if (!active) return
+        if (result.status === 'paid' && result.accessToken) { setPaymentStatus('paid'); active = false; dispatch({ type: 'PAYMENT_CONFIRMED', token: result.accessToken }); return }
+        if (result.status === 'expired') { setPaymentStatus('expired'); active = false; dispatch({ type: 'ERROR', message: '支付二维码已过期，请重新生成支付订单' }) }
       } catch {
-        // A transient polling failure should not invalidate an active payment QR code.
+        if (active) setPaymentStatus('failed')
       }
     }
     void check()
@@ -132,6 +137,10 @@ function PaymentPage() {
       await fetch(`/api/payments/mock/${encodeURIComponent(state.paymentOrder.orderId)}`)
       const result = await services.payment.status(state.paymentOrder.orderId, state.id)
       if (result.accessToken) dispatch({ type: 'PAYMENT_CONFIRMED', token: result.accessToken })
+      if (result.accessToken) setPaymentStatus('paid')
+    } catch (error) {
+      dispatch({ type: 'ERROR', message: error instanceof Error ? error.message : '模拟支付确认失败，请重试' })
+      setPaymentStatus('failed')
     } finally {
       setChecking(false)
     }
@@ -153,8 +162,9 @@ function PaymentPage() {
           <i className="payment-scan-line" />
         </div>
         <h2>请使用微信扫一扫</h2>
-        <p className="payment-status"><span /> 等待支付结果 · {minutes}:{seconds}</p>
+        <p className={`payment-status payment-status--${paymentStatus}`}><span /> {paymentStatus === 'creating' ? '正在创建支付订单' : paymentStatus === 'paid' ? '支付成功，正在进入拍照' : paymentStatus === 'expired' ? '支付二维码已过期' : paymentStatus === 'failed' ? '支付状态查询失败，可稍后重试' : `等待支付结果 · ${minutes}:${seconds}`}</p>
         {state.error && <div className="payment-error">{state.error}</div>}
+        {(paymentStatus === 'failed' || paymentStatus === 'expired') && <button className="secondary-cta payment-retry-button" onClick={() => { creatingRef.current = false; dispatch({ type: 'PAYMENT_RETRY' }) }}>重新生成支付订单</button>}
         {state.paymentOrder?.mock && <button className="mock-payment-button" disabled={checking} onClick={() => void completeMockPayment()}>{checking ? '正在确认…' : '开发模式：模拟完成支付'}</button>}
       </section>
       <div className="payment-assurance"><span><ShieldCheck /> 微信官方安全支付</span><span>支付后可拍摄并生成最多 2 张作品</span></div>

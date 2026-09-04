@@ -11,6 +11,7 @@ import { stylePresets } from '../../src/mocks/fixtures/styles'
 import { AssetStore } from '../assets/assetStore'
 import { analyzeBackgroundPrompt, composeFallbackPrompt } from '../vision/analyze'
 import { validateImageBuffer } from '../lib/images'
+import { WechatPayClient } from '../payment/wechatPay'
 
 type Role = 'owner' | 'operator' | 'technical'
 type Session = { username: string; role: Role; csrf: string; expiresAt: number }
@@ -328,7 +329,51 @@ export function createAdminRouter(config: ServerConfig, store: PaymentOrderRepos
   router.post('/api/admin/refunds', guard, requireAnyPermission('refund:request', 'refund:write'), express.json({ limit: '16kb' }), async (request, response) => {
     const order = await store.find(String(request.body?.orderId ?? '')); const reason = typeof request.body?.reason === 'string' ? request.body.reason.trim() : ''
     if (!order || order.status !== 'paid' || !reason) { response.status(400).json({ code: 'INVALID_INPUT', message: '仅已支付订单可申请退款，且必须填写原因' }); return }
-    const event = record(request, 'refund.requested', 'order', order.id, reason); response.status(202).json({ requestId: crypto.randomUUID(), status: 'requested', orderId: order.id, audit: event })
+    if (!database) { const event = record(request, 'refund.requested', 'order', order.id, reason); response.status(202).json({ requestId: crypto.randomUUID(), status: 'requested', orderId: order.id, audit: event }); return }
+    const existing = await database.query<Array<{ id: string; status: string }>>(`SELECT id, status FROM refund_requests WHERE order_id = ? AND status IN ('requested','approved','processing') ORDER BY created_at DESC LIMIT 1`, [order.id])
+    if (existing[0]) { response.status(409).json({ code: 'REFUND_ALREADY_REQUESTED', message: '该订单已有退款申请正在处理', requestId: existing[0].id }); return }
+    const requestId = crypto.randomUUID(); const admin = (request as express.Request & { admin?: { username: string } }).admin
+    const actorRows = await database.query<Array<{ id: number }>>('SELECT id FROM admin_users WHERE username = ? LIMIT 1', [admin?.username ?? ''])
+    const requestedBy = Number(actorRows[0]?.id ?? 0)
+    await database.pool.query(`INSERT INTO refund_requests (id, order_id, requested_by, amount_fen, reason, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'requested', UTC_TIMESTAMP(), UTC_TIMESTAMP())`, [requestId, order.id, requestedBy, order.amountFen, reason])
+    const event = record(request, 'refund.requested', 'order', order.id, reason); response.status(202).json({ requestId, status: 'requested', orderId: order.id, audit: event })
+  })
+  router.get('/api/admin/refunds', guard, requireAnyPermission('refund:request', 'refund:write'), async (_request, response) => {
+    if (!database) { response.json({ refunds: [] }); return }
+    const refunds = await database.query<Array<Record<string, unknown>>>(`SELECT r.id, r.order_id AS orderId, r.amount_fen AS amountFen, r.reason, r.status, r.wechat_refund_id AS wechatRefundId, r.error_code AS errorCode, r.created_at AS createdAt, r.updated_at AS updatedAt, o.session_id AS sessionId, o.transaction_id AS transactionId FROM refund_requests r JOIN orders o ON o.id = r.order_id ORDER BY r.created_at DESC LIMIT 200`)
+    response.json({ refunds })
+  })
+  router.post('/api/admin/refunds/:id/reject', guard, requirePermission('refund:write'), express.json({ limit: '8kb' }), async (request, response) => {
+    if (!database) { response.status(503).json({ code: 'DATABASE_REQUIRED', message: '退款审核需要启用 MySQL' }); return }
+    const id = String(request.params.id); const reason = typeof request.body?.reason === 'string' ? request.body.reason.trim() : ''
+    const result = await database.pool.query(`UPDATE refund_requests SET status = 'rejected', error_code = ?, updated_at = UTC_TIMESTAMP() WHERE id = ? AND status = 'requested'`, [reason || 'ADMIN_REJECTED', id])
+    if (!(result[0] as { affectedRows?: number }).affectedRows) { response.status(409).json({ code: 'REFUND_NOT_REVIEWABLE', message: '退款申请不存在或已处理' }); return }
+    record(request, 'refund.rejected', 'refund', id, reason || undefined); response.json({ id, status: 'rejected' })
+  })
+  router.post('/api/admin/refunds/:id/approve', guard, requirePermission('refund:write'), express.json({ limit: '8kb' }), async (request, response) => {
+    if (!database) { response.status(503).json({ code: 'DATABASE_REQUIRED', message: '退款审核需要启用 MySQL' }); return }
+    const id = String(request.params.id)
+    const rows = await database.query<Array<{ id: string; orderId: string; amountFen: number; reason: string; status: string; transactionId: string | null }>>(`SELECT r.id, r.order_id AS orderId, r.amount_fen AS amountFen, r.reason, r.status, o.transaction_id AS transactionId FROM refund_requests r JOIN orders o ON o.id = r.order_id WHERE r.id = ? LIMIT 1`, [id])
+    const refund = rows[0]
+    if (!refund || refund.status !== 'requested') { response.status(409).json({ code: 'REFUND_NOT_REVIEWABLE', message: '退款申请不存在或已处理' }); return }
+    await database.pool.query(`UPDATE refund_requests SET status = 'processing', updated_at = UTC_TIMESTAMP() WHERE id = ? AND status = 'requested'`, [id])
+    try {
+      let refundId = `MOCK-${id}`; let finalStatus: 'succeeded' | 'processing' = 'succeeded'
+      if (config.payment.mode === 'wechat-native') {
+        if (!refund.transactionId) throw new Error('订单缺少微信交易号，无法退款')
+        const result = await new WechatPayClient(config.payment).createRefund({ orderId: refund.orderId, transactionId: refund.transactionId, amountFen: refund.amountFen, reason: refund.reason })
+        refundId = result.refund_id ?? refundId; finalStatus = result.status === 'SUCCESS' ? 'succeeded' : 'processing'
+      }
+      await database.pool.query(`UPDATE refund_requests SET status = ?, wechat_refund_id = ?, updated_at = UTC_TIMESTAMP() WHERE id = ?`, [finalStatus, refundId, id])
+      if (finalStatus === 'succeeded') await store.markRefunded?.(refund.orderId)
+      record(request, 'refund.approved', 'refund', id)
+      response.json({ id, status: finalStatus, refundId })
+    } catch (error) {
+      const errorCode = error instanceof Error ? error.message.slice(0, 80) : 'REFUND_FAILED'
+      await database.pool.query(`UPDATE refund_requests SET status = 'failed', error_code = ?, updated_at = UTC_TIMESTAMP() WHERE id = ?`, [errorCode, id])
+      record(request, 'refund.failed', 'refund', id, errorCode)
+      response.status(502).json({ code: 'REFUND_FAILED', message: '退款执行失败，请核对微信商户配置或稍后重试' })
+    }
   })
   router.get('/api/admin/audit-logs', guard, (_request, response) => response.json({ logs: audit.slice(0, 200) }))
   router.get('/api/admin/health', guard, async (_request, response) => {

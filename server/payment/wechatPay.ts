@@ -86,6 +86,19 @@ export class WechatPayClient {
     if (response.status !== 204) throw new Error(`微信支付关单失败 (${response.status})`)
   }
 
+  async createRefund(input: { orderId: string; transactionId: string; amountFen: number; reason: string }) {
+    const pathname = '/v3/refund/domestic/refunds'
+    const body = JSON.stringify({
+      transaction_id: input.transactionId,
+      out_refund_no: `RF${input.orderId}${crypto.randomBytes(4).toString('hex').toUpperCase()}`.slice(0, 64),
+      reason: input.reason.slice(0, 80),
+      amount: { refund: input.amountFen, total: input.amountFen, currency: 'CNY' },
+    })
+    const { response, responseBody } = await this.request('POST', pathname, body)
+    if (!response.ok) throw new Error(`微信退款申请失败 (${response.status})`)
+    return JSON.parse(responseBody) as { refund_id?: string; status?: 'PROCESSING' | 'SUCCESS' | 'CLOSED' | 'ABNORMAL' }
+  }
+
   verifyResponse(headers: Headers, body: string) {
     const timestamp = headers.get('wechatpay-timestamp')
     const nonce = headers.get('wechatpay-nonce')

@@ -24,6 +24,7 @@ export type SessionAction =
   | { type: 'GO'; stage: KioskStage }
   | { type: 'REDEEMED'; entitlement: Entitlement }
   | { type: 'PAYMENT_CREATED'; order: PaymentOrder }
+  | { type: 'PAYMENT_RETRY' }
   | { type: 'PAYMENT_CONFIRMED'; token: string }
   | { type: 'GENERATION_STARTED'; generationId: string }
   | { type: 'PHOTO_SET'; photo: CapturedPhoto }
@@ -46,6 +47,8 @@ export function sessionReducer(state: KioskSession, action: SessionAction): Kios
       return { ...state, entitlement: action.entitlement, stage: 'camera', error: null }
     case 'PAYMENT_CREATED':
       return { ...state, paymentOrder: action.order, error: null }
+    case 'PAYMENT_RETRY':
+      return { ...state, paymentOrder: null, paymentToken: null, error: null, stage: 'payment' }
     case 'PAYMENT_CONFIRMED':
       return { ...state, paymentToken: action.token, stage: 'camera', error: null }
     case 'GENERATION_STARTED':

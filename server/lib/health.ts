@@ -29,16 +29,17 @@ async function checkDirectory(directory: string): Promise<HealthCheck> {
 
 function collectAgentVisionCheck(config: ServerConfig): HealthCheck {
   const setCount = [config.vision.baseUrl, config.vision.apiKey, config.vision.model].filter(Boolean).length
+  const details = { provider: config.provider, model: config.vision.model || '未配置', configured: setCount === 3 }
   if (agentGenerationEnabled(config)) {
-    return { status: 'ok', message: 'Agent 智能生图已启用', details: { provider: config.provider } }
+    return { status: 'ok', message: 'Agent 智能生图已启用', details }
   }
   if (setCount > 0) {
-    return { status: 'degraded', message: 'VISION_* 配置不完整（需要 VISION_BASE_URL、VISION_API_KEY、VISION_MODEL），Agent 模式已禁用', details: { provider: config.provider, configured: setCount } }
+    return { status: 'degraded', message: 'VISION_* 配置不完整（需要 VISION_BASE_URL、VISION_API_KEY、VISION_MODEL），Agent 模式已禁用', details: { ...details, configuredFields: setCount } }
   }
   if (config.provider === 'mock') {
-    return { status: 'disabled', message: 'Agent 模式使用 mock 回退提示词', details: { provider: config.provider } }
+    return { status: 'disabled', message: 'Agent 模式使用 mock 回退提示词', details }
   }
-  return { status: 'disabled', message: '未配置 VISION_*，Agent 模式已禁用', details: { provider: config.provider } }
+  return { status: 'disabled', message: '未配置 VISION_*，Agent 模式已禁用', details }
 }
 
 export async function collectHealth(config: ServerConfig, database: Database | null): Promise<{ ok: boolean; status: HealthStatus; checks: Record<string, HealthCheck>; timestamp: string }> {

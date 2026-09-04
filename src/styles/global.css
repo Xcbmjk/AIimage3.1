@@ -273,6 +273,9 @@ button {
 .payment-error { margin-top: 16px; padding: 12px; text-align: center; color: #9e301f; background: rgba(217, 68, 38, .08); }
 .mock-payment-button { display: block; margin: 20px auto 0; padding: 12px 18px; border: 1px dashed rgba(17, 46, 41, .4); color: var(--ink-deep); }
 .mock-payment-button:disabled { opacity: .5; }
+.payment-retry-button { margin: 14px auto 0; padding: 10px 14px; }
+.payment-status--failed { color: #a34b42; }
+.payment-status--expired { color: #9a6a20; }
 .payment-assurance { display: flex; justify-content: center; gap: 54px; margin-top: 36px; color: rgba(255, 255, 255, .62); font-size: 17px; }
 .payment-assurance span { display: flex; align-items: center; gap: 9px; }
 
