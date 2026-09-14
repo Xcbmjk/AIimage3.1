@@ -1,63 +1,26 @@
 import { createContext, type Dispatch, type PropsWithChildren, useContext, useEffect, useMemo, useReducer } from 'react'
 import type { KioskSession } from '../../types'
 import { createInitialSession, sessionReducer, type SessionAction } from './sessionReducer'
+import { loadPersistedSession, syncPersistedSession } from './sessionPersistence'
 
 const SessionContext = createContext<{ state: KioskSession; dispatch: Dispatch<SessionAction> } | null>(null)
-
-const SESSION_STORAGE_KEY = 'kiosk_session'
-
-function loadPersistedSession(): Partial<KioskSession> | null {
-  try {
-    const stored = localStorage.getItem(SESSION_STORAGE_KEY)
-    if (!stored) return null
-    const parsed = JSON.parse(stored)
-    // 只恢复关键字段：entitlement, entitlementToken, id
-    if (parsed.entitlement && parsed.entitlementToken && parsed.id) {
-      return {
-        id: parsed.id,
-        entitlement: parsed.entitlement,
-        entitlementToken: parsed.entitlementToken,
-      }
-    }
-    return null
-  } catch {
-    return null
-  }
-}
-
-function persistSession(session: KioskSession) {
-  try {
-    // 只保存关键字段
-    const toSave = {
-      id: session.id,
-      entitlement: session.entitlement,
-      entitlementToken: session.entitlementToken,
-    }
-    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(toSave))
-  } catch {
-    // 忽略存储错误
-  }
-}
 
 export function SessionProvider({ children }: PropsWithChildren) {
   const [state, dispatch] = useReducer(sessionReducer, undefined, () => {
     const initial = createInitialSession()
-    const persisted = loadPersistedSession()
-    if (persisted && persisted.entitlement && persisted.entitlementToken) {
-      // 恢复到相机页面
+    const persisted = loadPersistedSession(window.localStorage)
+    if (persisted) {
+      // 仅恢复「生图尚未开始」的会话，让意外中断（WebView 崩溃/刷新）的游客继续；
+      // 生成已开始或结束的快照不会被恢复，启动后落在首页。
       return { ...initial, ...persisted, stage: 'camera' as const }
     }
     return initial
   })
 
-  // 持久化 entitlement 和 token
+  // 会话快照只在「兑换后、生图前」保持；生成一旦开始权益即被消耗，
+  // 快照随之清除，保证下一位游客重启后看到的是首页而不是拍照页。
   useEffect(() => {
-    if (state.entitlement && state.entitlementToken) {
-      persistSession(state)
-    } else if (state.stage === 'welcome') {
-      // 用户重置或回到欢迎页，清除持久化
-      localStorage.removeItem(SESSION_STORAGE_KEY)
-    }
+    syncPersistedSession(window.localStorage, state)
   }, [state])
 
   const value = useMemo(() => ({ state, dispatch }), [state])
@@ -71,4 +34,3 @@ export function useSession() {
   if (!context) throw new Error('useSession must be used within SessionProvider')
   return context
 }
-

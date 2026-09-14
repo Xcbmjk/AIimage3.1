@@ -19,6 +19,11 @@ describe('normalizeApiBase', () => {
   })
 
   it('uses the configured base only for native Android requests', () => {
-    expect(apiUrl('/api/catalog', true)).toBe('http://111.229.11.229:8787/api/catalog')
+    // 基址来自 .env.local 的 VITE_API_BASE_URL,服务器会迁移,断言只验证
+    // 「原生请求拼接配置基址」这一行为,不绑定具体 IP。
+    const configured = import.meta.env.VITE_API_BASE_URL as string | undefined
+    expect(apiUrl('/api/catalog', true)).toBe(
+      configured ? `${configured.replace(/\/$/, '')}/api/catalog` : '/api/catalog',
+    )
   })
 })

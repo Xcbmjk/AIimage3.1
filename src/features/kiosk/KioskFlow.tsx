@@ -422,7 +422,7 @@ function DownloadPage() {
 }
 
 export function KioskFlow() {
-  const { state } = useSession()
+  const { state, dispatch } = useSession()
   const generationMode = import.meta.env.VITE_GENERATION_MODE ?? 'mock'
   const [styles, setStyles] = useState<StylePreset[]>(
     generationMode === 'api' ? [] : stylePresets,
@@ -431,6 +431,24 @@ export function KioskFlow() {
   useEffect(() => { void services.styles.list().then(setStyles) }, [])
   useEffect(() => { void services.backgrounds.list().then(setBackgrounds) }, [])
   const agentEnabled = backgrounds.length > 0
+  // 亭机无人值守：作品展示 / 下载页连续 120 秒没有任何触屏或按键操作，
+  // 自动回到首页，避免上一位游客扫码离开后，屏幕一直停留在他的结果页。
+  // 生成中的页面不参与（生成不能被打断），拍照页不参与（摆姿势不代表离开）。
+  useEffect(() => {
+    if (state.stage !== 'results' && state.stage !== 'download') return
+    const IDLE_RESET_MS = 120_000
+    let timer = window.setTimeout(() => dispatch({ type: 'RESET' }), IDLE_RESET_MS)
+    const rearm = () => {
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => dispatch({ type: 'RESET' }), IDLE_RESET_MS)
+    }
+    const events = ['pointerdown', 'touchstart', 'keydown'] as const
+    for (const event of events) window.addEventListener(event, rearm, { passive: true })
+    return () => {
+      window.clearTimeout(timer)
+      for (const event of events) window.removeEventListener(event, rearm)
+    }
+  }, [state.stage, dispatch])
   switch (state.stage) {
     case 'welcome': return <WelcomePage />
     case 'redeem': return <RedeemPage />
