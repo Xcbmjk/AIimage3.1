@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import {
-  Activity, ArrowRight, BarChart3, Brain, Check, Copy, FileText, ImagePlus,
-  KeyRound, LogOut, Palette, Plus, RefreshCw, RotateCcw, ShieldCheck, UserRound, X,
+  Activity, ArrowRight, BarChart3, Brain, Check, Copy, Download, FileText, ImagePlus,
+  Images, KeyRound, LogOut, Palette, Plus, RefreshCw, RotateCcw, Search, ShieldCheck,
+  UserRound, X,
 } from 'lucide-react'
 
 type Role = 'owner' | 'operator' | 'technical'
 type User = { username: string; role: Role }
-type View = 'overview' | 'generations' | 'entitlements' | 'styles' | 'backgrounds' | 'models' | 'image-models' | 'redeem-codes' | 'health' | 'audit'
+type View = 'overview' | 'gallery' | 'generations' | 'entitlements' | 'styles' | 'backgrounds' | 'models' | 'image-models' | 'redeem-codes' | 'health' | 'audit'
 type MessageState = { text: string; error?: boolean }
 const roleNames: Record<Role, string> = { owner: '老板', operator: '运营', technical: '技术' }
 const nav: Array<{ id: View; label: string; icon: typeof Activity; roles?: Role[] }> = [
   { id: 'overview', label: '概览', icon: BarChart3 },
+  { id: 'gallery', label: '作品库', icon: Images },
   { id: 'generations', label: '生图任务', icon: RotateCcw },
   { id: 'entitlements', label: '体验权益', icon: ShieldCheck },
   { id: 'styles', label: '风格管理', icon: Palette, roles: ['owner', 'operator'] },
@@ -116,6 +118,7 @@ function Login({ busy, error, onSubmit }: { busy: boolean; error: string; onSubm
 }
 function ViewContent({ view, role }: { view: View; role: Role }) {
   if (view === 'overview') return <Overview />
+  if (view === 'gallery') return <Gallery />
   if (view === 'generations') return <Generations />
   if (view === 'entitlements') return <Entitlements />
   if (view === 'styles') return <Styles role={role} />
@@ -134,6 +137,68 @@ function Overview() {
   const { data, loading } = useAdminData('/api/admin/summary', { provider: 'mock', totals: { entitlements: 0, activeEntitlements: 0, generationTotal: 0, generationSucceeded: 0, generationFailed: 0, stylesPublished: 0, backgroundsPublished: 0 }, recentGenerations: [] as Generation[] })
   const cards = [['体验权益', data.totals.entitlements, '累计生成的体验权益'], ['可用权益', data.totals.activeEntitlements, '当前可使用'], ['生图任务', data.totals.generationTotal, '全部任务记录'], ['生成成功', data.totals.generationSucceeded, '已完成任务'], ['异常任务', data.totals.generationFailed, '需要关注'], ['已发布风格', data.totals.stylesPublished, '当前版本']]
   return <><section className="metric-grid">{cards.map(([label, value, note]) => <div className="metric-card" key={label as string}><span>{label}</span><strong>{loading ? '—' : value}</strong><small>{note}</small></div>)}</section><section className="panel two-col"><div><PanelTitle title="最近生图任务" /><GenerationTable generations={data.recentGenerations} /></div><div className="status-panel"><PanelTitle title="运行状态" /><div className="runtime"><span className="runtime-icon"><Activity size={18} /></span><div><b>图像服务：{data.provider}</b><small>Python API 已连接</small></div><span className="status-pill success">在线</span></div><div className="runtime"><span className="runtime-icon sand"><Palette size={18} /></span><div><b>内容配置</b><small>{data.totals.stylesPublished} 个风格 · {data.totals.backgroundsPublished} 个背景</small></div><span className="status-pill neutral">MySQL</span></div></div></section></>
+}
+type GalleryItem = {
+  assetId: string; url: string; styleId: string; mimeType: string; byteSize: number
+  createdAt: string; expiresAt: string; generationId: string; mode: string
+  status: string; sessionId: string; redeemCodePrefix?: string | null; redeemCodeStatus?: string | null
+}
+const emptyGallery = { items: [] as GalleryItem[], total: 0, totalBytes: 0 }
+function formatBytes(size: number) {
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(0)} KB`
+  return `${(size / 1024 / 1024).toFixed(1)} MB`
+}
+const redeemStatus: Record<string, string> = { available: '未使用', reserved: '处理中', redeemed: '已兑换', disabled: '已禁用' }
+function Gallery() {
+  const [keyword, setKeyword] = useState('')
+  const [submitted, setSubmitted] = useState('')
+  const [preview, setPreview] = useState<GalleryItem | null>(null)
+  const query = submitted.trim() ? `&q=${encodeURIComponent(submitted.trim())}` : ''
+  const { data, loading } = useAdminData<typeof emptyGallery>(`/api/admin/gallery?limit=120${query}`, emptyGallery)
+  useEffect(() => {
+    if (!preview) return
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setPreview(null) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [preview])
+  return <section className="panel gallery-panel">
+    <div className="style-toolbar"><div><h2>作品库</h2><p>按兑换码前缀、会话 ID 或任务 ID 检索游客生成的图片。</p></div><span className="muted">{loading ? '加载中' : `${data.total} 张 · ${formatBytes(data.totalBytes)}`}</span></div>
+    <form className="config-form inline gallery-search" onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); setSubmitted(keyword) }}>
+      <label className="wide-field">检索关键词<input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="兑换码前缀 / 会话 ID / 任务 ID / 风格 ID" /></label>
+      <div className="editor-actions"><button className="primary-btn" type="submit"><Search size={16} />搜索</button>{submitted && <button className="secondary-cta" type="button" onClick={() => { setKeyword(''); setSubmitted('') }}>清空</button>}</div>
+    </form>
+    {!loading && !data.items.length && <Empty text={submitted ? '没有匹配的图片' : '暂无生成图片'} />}
+    <div className="gallery-grid">{data.items.map((item) => <button className="gallery-card" key={item.assetId} onClick={() => setPreview(item)}>
+      <span className="gallery-thumb"><img src={item.url} alt="" loading="lazy" /></span>
+      <span className="gallery-code">{item.redeemCodePrefix ? `${item.redeemCodePrefix}••••` : '无兑换码'}</span>
+      <span className="gallery-meta">{item.styleId} · {item.mode === 'agent' ? 'Agent' : '经典风格'}</span>
+      <span className="gallery-meta muted">{formatDate(item.createdAt)} · {formatBytes(item.byteSize)}</span>
+    </button>)}</div>
+    <p className="muted gallery-note">兑换码明文不入库，这里只显示前 4 位前缀用于与票根核对；图片保留 30 天，到期后自动清理。</p>
+    {preview && <div className="style-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPreview(null) }}>
+      <div className="style-modal gallery-modal" role="dialog" aria-modal="true">
+        <div className="style-modal-head"><div><h2>作品详情</h2><p className="mono">{preview.assetId}</p></div><button className="icon-btn" title="关闭" onClick={() => setPreview(null)}><X size={18} /></button></div>
+        <div className="gallery-preview-body">
+          <img className="gallery-preview-image" src={preview.url} alt="" />
+          <dl className="gallery-detail">
+            <div><dt>兑换码</dt><dd className="mono">{preview.redeemCodePrefix ? `${preview.redeemCodePrefix}••••` : '—'}{preview.redeemCodeStatus && <small className="table-subtitle">{redeemStatus[preview.redeemCodeStatus] ?? preview.redeemCodeStatus}</small>}</dd></div>
+            <div><dt>风格</dt><dd>{preview.styleId}</dd></div>
+            <div><dt>模式</dt><dd>{preview.mode === 'agent' ? 'Agent 背景合成' : '经典风格'}</dd></div>
+            <div><dt>任务 ID</dt><dd className="mono">{preview.generationId}</dd></div>
+            <div><dt>会话 ID</dt><dd className="mono">{preview.sessionId}</dd></div>
+            <div><dt>生成时间</dt><dd>{formatDate(preview.createdAt)}</dd></div>
+            <div><dt>过期时间</dt><dd>{formatDate(preview.expiresAt)}</dd></div>
+            <div><dt>体积</dt><dd>{formatBytes(preview.byteSize)}</dd></div>
+          </dl>
+        </div>
+        <div className="editor-actions gallery-preview-actions">
+          <a className="secondary-cta" href={preview.url} target="_blank" rel="noreferrer">新窗口打开</a>
+          <a className="primary-btn" href={preview.url} download={`${preview.redeemCodePrefix ?? 'artwork'}-${preview.styleId}.jpg`}><Download size={16} />下载原图</a>
+        </div>
+      </div>
+    </div>}
+  </section>
 }
 function Generations() {
   const { data, loading } = useAdminData<{ generations: Generation[] }>('/api/admin/generations', { generations: [] })

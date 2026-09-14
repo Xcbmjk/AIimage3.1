@@ -9,7 +9,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ..api.errors import ApiError
@@ -23,6 +23,7 @@ from ..db.models import (
     GenerationJob,
     GenerationStyle,
     ModelConfig,
+    RedeemCode,
     StyleVersion,
 )
 from ..dependencies import create_db_dependency
@@ -406,6 +407,65 @@ def create_admin_router(
             ).all()
         )
         return {"generations": [_generation_dict(job) for job in jobs]}
+
+    @router.get("/api/admin/gallery")
+    async def gallery(
+        q: str | None = None,
+        limit: int = 120,
+        principal: AdminPrincipal = Depends(require_admin),
+        session: AsyncSession = Depends(db),
+    ) -> dict[str, object]:
+        """生图作品库：列出已生成的图片及其兑换码前缀。
+
+        兑换码明文不入库（只存哈希），因此这里只能给出前缀，用于和游客手上的
+        实体票根核对；需要精确追溯时用会话 ID 或任务 ID 检索。
+        """
+        _require(principal, "read")
+        size = max(1, min(limit, 300))
+        statement = (
+            select(Asset, GenerationJob, RedeemCode)
+            .join(GenerationJob, GenerationJob.id == Asset.generation_id)
+            .join(Entitlement, Entitlement.id == GenerationJob.entitlement_id)
+            .outerjoin(RedeemCode, RedeemCode.id == Entitlement.redeem_code_id)
+            .order_by(desc(Asset.created_at))
+            .limit(size)
+        )
+        keyword = (q or "").strip()
+        if keyword:
+            pattern = f"%{keyword}%"
+            statement = statement.where(
+                or_(
+                    RedeemCode.code_prefix.ilike(pattern),
+                    GenerationJob.session_id.ilike(pattern),
+                    Asset.generation_id == keyword,
+                    Asset.id == keyword,
+                    Asset.style_id.ilike(pattern),
+                )
+            )
+        rows = (await session.execute(statement)).all()
+        total_bytes = sum(int(row[0].byte_size) for row in rows)
+        return {
+            "items": [
+                {
+                    "assetId": asset.id,
+                    "url": f"/api/assets/{asset.id}",
+                    "styleId": asset.style_id,
+                    "mimeType": asset.mime_type,
+                    "byteSize": int(asset.byte_size),
+                    "createdAt": _iso(asset.created_at),
+                    "expiresAt": _iso(asset.expires_at),
+                    "generationId": job.id,
+                    "mode": job.mode,
+                    "status": job.status,
+                    "sessionId": job.session_id,
+                    "redeemCodePrefix": code.code_prefix if code is not None else None,
+                    "redeemCodeStatus": code.status if code is not None else None,
+                }
+                for asset, job, code in rows
+            ],
+            "total": len(rows),
+            "totalBytes": total_bytes,
+        }
 
     @router.post("/api/admin/generations/{generation_id}/retry", status_code=202)
     async def retry_generation(
