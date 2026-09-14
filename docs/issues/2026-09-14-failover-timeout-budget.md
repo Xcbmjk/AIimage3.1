@@ -84,11 +84,40 @@
   npm run build                          通过类型检查（tsc -b && vite build）
   ```
 
-- 注意：迁移已在远程库执行（`004_model_configs` → `005_model_config_resilience`）。新增列可空，对当时仍在运行的旧版本代码向后兼容，不需要停机。
+- 生产库操作（已按用户确认执行）：
+
+  1. **迁移已执行**：远程库 `aiimage-py` 由 `004_model_configs` 升到 `005_model_config_resilience`（`alembic upgrade head`）。新增列可空，对当时仍在运行的旧版本代码向后兼容，未停机。
+  2. **数据侧已按用户确认调整**（经后台 `PUT /api/admin/model-configs/{id}`，因此留有审计记录）：
+
+     | 行 | timeout_ms | max_attempts | failure_threshold | cooldown_seconds | enabled | is_default |
+     | --- | --- | --- | --- | --- | --- | --- |
+     | `deepcoding` | 120000 | 3 | 1 | 60 | 是 | 是（主线路） |
+     | `tokenworldai` | 120000 | 3 | 1 | 60 | 是 | 否（备用线路） |
+
+     容错三列**显式写库**而不是留 NULL，这样运行行为完全由数据库描述，运维在后台能直接看到真实取值。`timeout_ms` 由 300000 降到 120000：以实测单张中位 50s 计仍有约 2.4 倍余量，同时把单线路最坏耗时从约 903s 压到约 363s。
+
+- 实测证据（重启 API 后）：
+
+  ```text
+  GET /api/health
+    overall ok          = true
+    database            = ok
+    aiProvider          = {"provider": "gpt-image-2", "standbyLines": 1}
+    imageGeneration     = {"provider": "deepcoding", "implementation": "gpt-image-2",
+                          "standbyLines": 1, "classicEndpoint": "/images/generations",
+                          "editEndpoint": "/images/edits"}
+  GET /api/catalog       5 风格 / 1 背景，runtime.generationMode=api，agentEnabled=true
+  http://localhost:5173  HTTP 200；经 Vite 代理 /api/health 200
+  logs/generation.log    重启后无 error 级事件（历史 150 条均早于本次重启）
+
+  standbyLines 由 0 变为 1，是本问题修复的直接证据。
+  ```
+
+  注：本次改动前本地 API 虽在运行，但并未热加载新代码（PID 未变），因此重启前不会暴露缺列问题；一旦重启就会因 `model_configs` 缺列直接报错。这也是迁移必须先行执行的原因。
 
 ## 遗留与后续
 
-- **数据侧仍需人工调两个值**：`deepcoding` / `tokenworldai` 的 `timeout_ms` 仍为 `300000`，建议按实测中位 50s 调到 `120000`（约 2.4 倍余量）；`tokenworldai` 行仍是 `enabled=0`，需要在后台启用才会进入降级链。这两项是数据侧操作，本轮未擅自改动生产数据。
 - **4 风格 + 挂起型故障的极端组合**：即使按上述配置，一次生成 4 个风格时若主线路是「挂起不响应」型故障（每次尝试都吃满超时），660s 预算仍可能不够。彻底解决需要代码层取舍：超时不做同线路重试直接降级、提高前端/Vite 超时上限，或把风格生成改为并发。当前未实施。
 - 备用线路只覆盖「主线路失败」。主线路能返回但质量下降时不会自动切换，需要人工在后台「设为默认」。
 - 视觉分析（`vision_analysis`，当前 `baibai`）仍走单行 `get_default_model_config`，**没有降级链**；`/api/health` 的 `agentVision` 也没有 `standbyLines` 字段。
+- 备用线路的行顺序由 `is_default desc, updated_at desc` 决定：默认行永远第一，其余启用行按「最近编辑」排前。**编辑一条备用行会把它提前**，多条备用时要注意这个副作用。
