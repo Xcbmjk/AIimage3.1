@@ -90,5 +90,6 @@
 ## 遗留与后续
 
 - **备用线路当前为 0 条**：`tokenworldai` 行在库中 `enabled=0`，不计入可用行。要让降级生效需在后台把该行「启用」。这是数据侧操作，未擅自改动生产数据。
+- **启用后仍需先调超时**：即使启用了备用行，默认 `timeout_ms=300000` 会让单线路重试预算（约 903s）超过前端 660s 上限，导致降级永远不会被触发。详见 `2026-09-14-failover-timeout-budget.md`（ISSUE-031）。
 - **非 OpenAI 兼容实现仍依赖各自的环境变量**：`seedream`/`jimeng-i2i`/`gemini-3.1-flash-image` 的凭据形状（Volc AK/SK、Ark Key、Gemini Key）无法用现有 `model_configs` 字段表达，因此 `ARK_*`、`VOLC_*`、`JIMENG_*`、`GEMINI_IMAGE_*` 作为这些实现自身的兜底参数保留。若要求「全部进数据库」，需要先扩展表结构。
 - **健康检查仍不探活上游**：`imageGeneration` 的 `ok` 只表示存在配置行，不代表厂商可用。真实探活仍是待办（ISSUE-029 遗留项）。
