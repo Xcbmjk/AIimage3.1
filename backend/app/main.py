@@ -83,7 +83,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await maintenance_task
         await engine.dispose()
 
-    app = FastAPI(title="山境造像 API", lifespan=lifespan)
+    app = FastAPI(title="焕新造像 API", lifespan=lifespan)
     app.add_exception_handler(ApiError, api_error_handler)
     app.add_middleware(
         CORSMiddleware,

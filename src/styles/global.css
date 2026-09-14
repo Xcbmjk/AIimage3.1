@@ -1,5 +1,5 @@
 /* ==========================================================================
-   山境造像 · AI 旅拍 - 全局升级视觉样式表
+   焕新造像 · AI 旅拍 - 全局升级视觉样式表
    “赛博山水 · 浮光锦绣” (Cyber-Oriental Light & Silk Luxury Aesthetic)
    ========================================================================== */
 
@@ -581,20 +581,6 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-
-.venue-chip {
-  border: 1px solid var(--glass-border);
-  padding: 14px 24px;
-  border-radius: 100px;
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  font-size: 15px;
-  letter-spacing: 3px;
-  background: var(--glass-bg);
-  backdrop-filter: blur(16px);
-  color: var(--gold-bright);
 }
 
 .welcome-copy {
@@ -1901,7 +1887,6 @@ button {
 @media (max-width: 700px) {
   .screen { height: 100svh; max-height: 100svh; }
   .welcome-screen, .camera-screen, .generating-screen, .download-screen { padding: 28px 24px; }
-  .welcome-top .venue-chip { display: none; }
   .welcome-copy { margin-left: 0; margin-top: 12vh; }
   .welcome-copy h1 { font-size: 68px; }
   .welcome-copy p { font-size: 16px; }

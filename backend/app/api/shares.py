@@ -71,7 +71,7 @@ def _share_page(settings: Settings, share: Share) -> str:
         f"alt='AI 旅拍作品 {index}'></div><div class='postcard-signature'>"
         f"<div class='brand-lockup'><img src='/api/shares/assets/pixel-leap-logo.webp' alt='像素跃迁 Logo'>"
         "<span><b>像素跃迁</b><small>PIXEL LEAP</small></span></div>"
-        "<div class='postmark'><i>山境</i><span>MOUNTAIN<br>PORTRAIT</span></div></div>"
+        "<div class='postmark'><i>焕新</i><span>RENEWAL<br>PORTRAIT</span></div></div>"
         f"<div class='actions'><button type='button' data-postcard='{index}'>保存品牌明信片</button>"
         f"<a href='/api/shares/{html.escape(share.id)}/download/{index}'>下载无损原图</a></div>"
         "<p>明信片版只增加品牌留白，原图内容不做修改</p></article>"
@@ -81,7 +81,7 @@ def _share_page(settings: Settings, share: Share) -> str:
     return f"""<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>山境造像 · 保存作品</title>
+<title>焕新造像 · 保存作品</title>
 <style>
 *{{box-sizing:border-box}}body{{margin:0;background:#09241f;color:#f8eed7;font-family:"Noto Serif SC","Microsoft YaHei",serif}}
 main{{width:min(100% - 32px,680px);margin:0 auto;padding:36px 0 48px}}
@@ -98,7 +98,7 @@ h1{{margin:0 0 10px;font-weight:500;letter-spacing:6px}}header p,footer,.postcar
 .actions button{{border-color:#b64932;background:#b64932;color:#fff}}.actions a{{background:transparent;color:#163a34}}
 .postcard>p{{margin:12px 0 0;color:#7c786d;text-align:center;font-size:10px}}footer{{text-align:center}}
 @media(max-width:390px){{.postcard-signature{{min-height:82px}}.brand-lockup>img{{width:38px;height:38px}}.brand-lockup b{{font-size:14px}}.postmark span{{display:none}}.actions{{grid-template-columns:1fr}}}}
-</style></head><body><main><header><h1>山境造像</h1>
+</style></head><body><main><header><h1>焕新造像</h1>
 <p>一张旅拍，两种珍藏方式</p></header><section>{cards}</section>
 <footer>作品将在 {expiry} 后失效，请及时保存</footer></main>
 <script>
@@ -138,7 +138,7 @@ document.querySelectorAll("[data-postcard]").forEach((button) => {{
       context.fillText("像素跃迁", padding + logoSize + Math.round(padding * .55), logoY + logoSize * .48);
       context.fillStyle = "#6d796e";
       context.font = Math.round(footerHeight * .065) + "px Arial";
-      context.fillText("PIXEL LEAP · MOUNTAIN PORTRAIT", padding + logoSize + Math.round(padding * .55), logoY + logoSize * .75);
+      context.fillText("PIXEL LEAP · RENEWAL PORTRAIT", padding + logoSize + Math.round(padding * .55), logoY + logoSize * .75);
       context.strokeStyle = "#b64932";
       context.lineWidth = Math.max(2, width * .002);
       context.beginPath();
@@ -147,7 +147,7 @@ document.querySelectorAll("[data-postcard]").forEach((button) => {{
       context.fillStyle = "#b64932";
       context.textAlign = "center";
       context.font = "bold " + Math.round(footerHeight * .11) + "px serif";
-      context.fillText("山 境", canvas.width - padding - footerHeight * .2, photo.naturalHeight + padding * 2 + footerHeight * .54);
+      context.fillText("焕 新", canvas.width - padding - footerHeight * .2, photo.naturalHeight + padding * 2 + footerHeight * .54);
       canvas.toBlob((blob) => {{
         if (!blob) throw new Error("render");
         const anchor = document.createElement("a");

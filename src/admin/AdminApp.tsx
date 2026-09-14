@@ -101,7 +101,7 @@ export function AdminApp() {
   }
   return <div className="admin-shell">
     <aside className="sidebar">
-      <div className="brand"><span className="brand-mark">山</span><span><strong>山境造像</strong><small>OPERATIONS</small></span></div>
+      <div className="brand"><span className="brand-mark">焕</span><span><strong>焕新造像</strong><small>OPERATIONS</small></span></div>
       <nav>{allowedNav.map((item) => { const Icon = item.icon; return <button key={item.id} className={active.id === item.id ? 'active' : ''} onClick={() => setView(item.id)}><Icon size={17} /><span>{item.label}</span>{active.id === item.id && <ArrowRight size={14} />}</button> })}</nav>
       <div className="sidebar-foot"><div className="user-chip"><span className="avatar"><UserRound size={16} /></span><span><b>{user.username}</b><small>{roleNames[user.role]}</small></span></div><button className="icon-btn" title="退出登录" onClick={() => void logout}><LogOut size={16} /></button></div>
     </aside>
@@ -112,7 +112,7 @@ export function AdminApp() {
 function Login({ busy, error, onSubmit }: { busy: boolean; error: string; onSubmit: (username: string, password: string) => void }) {
   const [username, setUsername] = useState('owner')
   const [password, setPassword] = useState('')
-  return <main className="login-page"><div className="login-panel"><div className="login-brand"><span className="brand-mark">山</span><div><strong>山境造像</strong><small>OPERATIONS CONSOLE</small></div></div><h1>欢迎回来</h1><p>登录管理后台，查看和维护体验业务。</p><form onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); onSubmit(username, password) }}><label>账号<input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" /></label><label>密码<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" /></label>{error && <div className="form-error">{error}</div>}<button className="primary-btn" disabled={busy}>{busy ? '正在验证…' : '登录后台'}<ArrowRight size={17} /></button></form><small className="login-note">账号密码由数据库中的管理员账号校验</small></div></main>
+  return <main className="login-page"><div className="login-panel"><div className="login-brand"><span className="brand-mark">焕</span><div><strong>焕新造像</strong><small>OPERATIONS CONSOLE</small></div></div><h1>欢迎回来</h1><p>登录管理后台，查看和维护体验业务。</p><form onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); onSubmit(username, password) }}><label>账号<input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" /></label><label>密码<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" /></label>{error && <div className="form-error">{error}</div>}<button className="primary-btn" disabled={busy}>{busy ? '正在验证…' : '登录后台'}<ArrowRight size={17} /></button></form><small className="login-note">账号密码由数据库中的管理员账号校验</small></div></main>
 }
 function ViewContent({ view, role }: { view: View; role: Role }) {
   if (view === 'overview') return <Overview />

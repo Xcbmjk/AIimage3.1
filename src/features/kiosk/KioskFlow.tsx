@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertCircle, ArrowRight, Bot, Camera, Check, ChevronLeft, Clock3, FileText, KeyRound, Leaf, Maximize2, RefreshCw, ScanLine, ShieldCheck, Sparkles, Upload, Wand2 } from 'lucide-react'
+import { AlertCircle, ArrowRight, Bot, Camera, Check, ChevronLeft, Clock3, FileText, KeyRound, Maximize2, RefreshCw, ScanLine, ShieldCheck, Sparkles, Upload, Wand2 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { brand } from '../../config/brand'
 import { productConfig } from '../../config/product'
@@ -60,7 +60,7 @@ function WelcomePage() {
   return (
     <main className="screen welcome-screen">
       <ScenicBackdrop />
-      <div className="welcome-top"><BrandMark light /><div className="venue-chip"><Leaf size={20} /> {brand.scenicArea}</div></div>
+      <div className="welcome-top"><BrandMark light /></div>
       <section className="welcome-copy">
         <span className="eyebrow">AI SCENIC PORTRAIT EXPERIENCE</span>
         <h1><em>山水入梦</em><br />此刻入画</h1>
@@ -73,7 +73,7 @@ function WelcomePage() {
         <p className="redeem-note redeem-note--welcome">仅限后台生成的兑换码，每个兑换码只能使用一次</p>
         <div className="trust-row"><span><ShieldCheck /> 隐私保护</span><span><Clock3 /> 即拍即取</span><span><ScanLine /> 微信扫码保存</span></div>
       </section>
-      <footer className="welcome-footer">{brand.tagline}<span>体验编号 · SJ 2026</span></footer>
+      <footer className="welcome-footer">{brand.tagline}<span>体验编号 · HX 2026</span></footer>
     </main>
   )
 }
@@ -382,7 +382,7 @@ function ResultsPage({ styles, backgrounds }: { styles: StylePreset[]; backgroun
     <main className="screen results-screen">
       <StepHeader step="05 / 05" title="你的山水作品" />
       <section className="results-intro"><span className="eyebrow eyebrow--dark">YOUR MOUNTAIN STORIES</span><h1>这一刻，已入画</h1><p>{isAgent ? 'Agent 已根据你的照片与所选背景完成合成' : '左右切换查看你的 AI 旅拍作品'}</p></section>
-      <div className="result-stage"><img src={activeAsset?.imageUrl} alt={captionName ?? '生成结果'} /><div className="result-stamp">山境<br />造像</div><button className="zoom-button"><Maximize2 /></button><div className="result-caption"><small>{captionSubtitle}</small><h3>{captionName}</h3></div></div>
+      <div className="result-stage"><img src={activeAsset?.imageUrl} alt={captionName ?? '生成结果'} /><div className="result-stamp">焕新<br />造像</div><button className="zoom-button"><Maximize2 /></button><div className="result-caption"><small>{captionSubtitle}</small><h3>{captionName}</h3></div></div>
       <div className="result-thumbs">{state.assets.map((asset, index) => { const style = isAgent ? backgrounds.find((item) => item.id === asset.styleId) : styles.find((item) => item.id === asset.styleId); return <button key={asset.id} className={index === activeIndex ? 'active' : ''} onClick={() => setActiveIndex(index)}><img src={asset.imageUrl} alt={style?.name} /><span>{style?.name}</span></button> })}</div>
       {isAgent && state.agentPrompt && (
         <details className="agent-prompt">

@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">山境造像</string>
-    <string name="title_activity_main">山境造像</string>
+    <string name="app_name">焕新造像</string>
+    <string name="title_activity_main">焕新造像</string>
     <string name="package_name">cn.pixelleap.shanjing</string>
     <string name="custom_url_scheme">cn.pixelleap.shanjing</string>
 </resources>

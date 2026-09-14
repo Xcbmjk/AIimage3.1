@@ -1,4 +1,4 @@
-# 山境造像 · AI 旅拍一体机
+# 焕新造像 · AI 旅拍一体机
 
 这是一个运行在安卓一体机上的 AI 人像拍摄应用。前端继续使用 React/Vite 和 Capacitor，后端已迁移到 Python/FastAPI。
 

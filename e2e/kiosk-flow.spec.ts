@@ -135,7 +135,7 @@ test.describe('山水 AI 旅拍 kiosk flow', () => {
 
     // ── Step 1: Welcome page ──────────────────────────────────────────────
     test.info().annotations.push({ type: 'step', description: 'Welcome' })
-    await expect(page).toHaveTitle(/山境造像/)
+    await expect(page).toHaveTitle(/焕新造像/)
     await expect(page.locator('.welcome-screen')).toBeVisible()
     await expect(page.locator('.primary-cta--light')).toBeVisible()
 

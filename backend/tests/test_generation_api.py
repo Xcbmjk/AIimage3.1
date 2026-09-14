@@ -357,7 +357,7 @@ async def test_share_uses_server_assets_and_supports_view_and_download(tmp_path:
 
         page = await client.get(f"/api/shares/{share_id}")
         assert page.status_code == 200
-        assert "山境造像" in page.text
+        assert "焕新造像" in page.text
         assert "保存品牌明信片" in page.text
         assert "/api/shares/assets/pixel-leap-logo.webp" in page.text
 

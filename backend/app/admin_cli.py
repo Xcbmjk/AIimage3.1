@@ -18,7 +18,7 @@ from .security.admin_auth import hash_admin_password
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="山境造像管理员账号工具")
+    parser = argparse.ArgumentParser(description="焕新造像管理员账号工具")
     subparsers = parser.add_subparsers(dest="command", required=True)
     create = subparsers.add_parser("create-user", help="创建数据库管理员账号")
     create.add_argument("--username", required=True, help="管理员账号")

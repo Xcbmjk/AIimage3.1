@@ -34,7 +34,7 @@ SELECT 'van-gogh', 1, '梵高星梦', '后印象油画', '旋转笔触、浓烈�
 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM `style_versions` WHERE `style_id` = 'van-gogh' AND `version` = 1);
 
 INSERT INTO `pricing_versions` (`amount_fen`, `description`, `status`, `created_at`, `published_at`)
-SELECT 990, '山境造像 AI 旅拍体验', 'published', UTC_TIMESTAMP(), UTC_TIMESTAMP()
+SELECT 990, '焕新造像 AI 旅拍体验', 'published', UTC_TIMESTAMP(), UTC_TIMESTAMP()
 FROM DUAL
 WHERE NOT EXISTS (SELECT 1 FROM `pricing_versions`);
 
