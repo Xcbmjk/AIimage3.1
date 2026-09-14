@@ -368,10 +368,18 @@ async def test_share_uses_server_assets_and_supports_view_and_download(tmp_path:
 
         image = await client.get(f"/api/shares/{share_id}/images/1")
         assert image.status_code == 200
-        assert image.headers["content-type"].startswith("image/png")
-        assert image.content == (
-            await client.get(f"/api/assets/{asset['assetId']}")
-        ).content
+        # 分享图统一带品牌水印：转码为 JPEG，尺寸与原图一致但内容不同
+        assert image.headers["content-type"].startswith("image/jpeg")
+        original = await client.get(f"/api/assets/{asset['assetId']}")
+        assert image.content != original.content
+        from io import BytesIO
+
+        from PIL import Image
+
+        with Image.open(BytesIO(image.content)) as watermarked, Image.open(
+            BytesIO(original.content)
+        ) as source:
+            assert watermarked.size == source.size
 
         download = await client.get(f"/api/shares/{share_id}/download/1")
         assert download.status_code == 200

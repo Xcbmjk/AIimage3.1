@@ -16,6 +16,7 @@ from ..db.models import Share
 from ..dependencies import create_db_dependency
 from ..domain.entitlement_service import utc_now
 from ..domain.share_service import SHARE_ID_PATTERN, ShareService
+from ..domain.watermark import apply_footer_watermark
 from ..security.entitlement_auth import require_entitlement
 from ..storage.assets import AssetStore
 
@@ -73,7 +74,7 @@ def _share_page(settings: Settings, share: Share) -> str:
         "<span><b>像素跃迁</b><small>PIXEL LEAP</small></span></div>"
         "<div class='postmark'><i>焕新</i><span>RENEWAL<br>PORTRAIT</span></div></div>"
         f"<div class='actions'><button type='button' data-postcard='{index}'>保存品牌明信片</button>"
-        f"<a href='/api/shares/{html.escape(share.id)}/download/{index}'>下载无损原图</a></div>"
+        f"<a href='/api/shares/{html.escape(share.id)}/download/{index}'>下载高清原图</a></div>"
         "<p>明信片版只增加品牌留白，原图内容不做修改</p></article>"
         for index in range(1, image_count + 1)
     )
@@ -157,7 +158,7 @@ document.querySelectorAll("[data-postcard]").forEach((button) => {{
         setTimeout(() => URL.revokeObjectURL(anchor.href), 1000);
       }}, "image/jpeg", .96);
     }} catch {{
-      window.alert("明信片生成失败，请下载无损原图");
+      window.alert("明信片生成失败，请下载高清原图");
     }} finally {{
       button.disabled = false;
       button.textContent = "保存品牌明信片";
@@ -253,9 +254,11 @@ def create_share_router(
             stored = asset_store.read(asset.file_path, category="output")
         except (FileNotFoundError, ValueError):
             return _not_found()
+        # 保存的图片统一带品牌水印（微信长按保存走的也是这个接口）
+        watermarked, mime_type = apply_footer_watermark(stored.data)
         return Response(
-            content=stored.data,
-            media_type=stored.mime_type,
+            content=watermarked,
+            media_type=mime_type,
             headers={"Cache-Control": "private, max-age=3600"},
         )
 
@@ -273,10 +276,11 @@ def create_share_router(
             stored = asset_store.read(asset.file_path, category="output")
         except (FileNotFoundError, ValueError):
             return _not_found()
-        extension = stored.mime_type.rsplit("/", 1)[-1].replace("jpeg", "jpg")
+        watermarked, mime_type = apply_footer_watermark(stored.data)
+        extension = mime_type.rsplit("/", 1)[-1].replace("jpeg", "jpg")
         return Response(
-            content=stored.data,
-            media_type=stored.mime_type,
+            content=watermarked,
+            media_type=mime_type,
             headers={
                 "Cache-Control": "private, max-age=3600",
                 "Content-Disposition": f'attachment; filename="shan-jing-ai-{index}.{extension}"',
