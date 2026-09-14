@@ -1,0 +1,1 @@
+"""Controlled local asset storage."""

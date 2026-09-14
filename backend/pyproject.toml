@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shan-jing-ai-kiosk-backend"
+version = "0.1.0"
+description = "FastAPI backend for the Shan Jing AI portrait kiosk"
+requires-python = ">=3.11"
+dependencies = [
+  "alembic==1.16.5",
+  "aiomysql==0.2.0",
+  "fastapi==0.116.1",
+  "httpx==0.28.1",
+  "Pillow==11.3.0",
+  "pydantic-settings==2.10.1",
+  "python-multipart==0.0.20",
+  "sqlalchemy[asyncio]==2.0.43",
+  "uvicorn[standard]==0.35.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "aiosqlite==0.21.0",
+  "pytest==8.4.2",
+  "pytest-asyncio==1.2.0",
+  "pytest-cov==6.3.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+  "mysql: requires a running MySQL test database",
+]
+
+[tool.setuptools.packages.find]
+where = [".."]
+include = ["backend*"]
