@@ -1,11 +1,9 @@
 export type KioskStage =
   | 'welcome'
-  | 'payment'
   | 'redeem'
   | 'camera'
   | 'review'
   | 'mode'
-  | 'scenes'
   | 'styles'
   | 'backgrounds'
   | 'generating'
@@ -20,6 +18,11 @@ export interface Entitlement {
   maxStyles: number
   expiresAt: string
   sessionId?: string
+}
+
+export interface EntitlementRedemption {
+  entitlement: Entitlement
+  accessToken: string
 }
 
 export interface CapturedPhoto {
@@ -75,37 +78,37 @@ export interface GeneratedAsset {
   imageUrl: string
 }
 
+export interface GenerationFailure {
+  styleId: string
+  code: string
+  message: string
+  retryable: boolean
+}
+
 export interface ShareLink {
   url: string
   expiresAt: string
 }
 
-export interface PaymentOrder {
-  orderId: string
-  amountFen: number
-  expiresAt: string
-  codeUrl: string
-  mock: boolean
-}
-
-export type GenerationProvider = 'mock' | 'gpt-image-2' | 'seedream' | 'jimeng-i2i' | 'gemini-3.1-flash-image'
+export type GenerationProvider = 'mock' | 'gpt-image-2' | 'gpt-image-2-url' | 'seedream' | 'jimeng-i2i' | 'gemini-3.1-flash-image'
 export type GenerationErrorCode =
   | 'CONFIG_ERROR'
   | 'INVALID_INPUT'
   | 'UPSTREAM_AUTH'
   | 'UPSTREAM_RATE_LIMIT'
   | 'UPSTREAM_TIMEOUT'
+  | 'UPSTREAM_TRANSIENT'
   | 'UPSTREAM_BAD_RESPONSE'
   | 'GENERATION_FAILED'
   | 'GENERATION_IN_PROGRESS'
   | 'GENERATION_ALREADY_CONSUMED'
+  | 'GENERATION_ATTEMPTS_EXHAUSTED'
   | 'GENERATION_REQUEST_MISMATCH'
 
 export interface GenerateRequest {
   sessionId: string
   generationId: string
   photo: string
-  sceneId: string
   styles: Array<{ id: string }>
 }
 
@@ -125,6 +128,7 @@ export interface AgentGenerateResponse {
   provider: GenerationProvider
   prompt: string
   assets: GeneratedAsset[]
+  failures?: GenerationFailure[]
 }
 
 export interface GenerationApiError {
@@ -137,17 +141,16 @@ export interface KioskSession {
   id: string
   stage: KioskStage
   entitlement: Entitlement | null
-  paymentOrder: PaymentOrder | null
-  paymentToken: string | null
+  entitlementToken: string | null
   generationId: string | null
   generationMode: GenerationMode
   photo: CapturedPhoto | null
-  selectedSceneId: string | null
   selectedStyleIds: string[]
   selectedBackgroundId: string | null
   agentPrompt: string | null
   jobs: GenerationJob[]
   assets: GeneratedAsset[]
+  failedStyleIds: string[]
   shareLink: ShareLink | null
   error: string | null
 }

@@ -18,9 +18,17 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: 'npx tsx server/index.ts',
+      command: 'python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8787',
       url: 'http://127.0.0.1:8787/api/health',
       timeout: 30_000,
+      env: {
+        APP_ENV: 'test',
+        MYSQL_ENABLED: 'false',
+        DATABASE_URL: 'sqlite+aiosqlite:///./data/e2e.sqlite3',
+        // APP_ENV=test with no model_configs row is what selects the mock
+        // provider now; the vendor itself is never chosen from the environment.
+        STATIC_DIRECTORY: 'dist',
+      },
       reuseExistingServer: true,
     },
     {

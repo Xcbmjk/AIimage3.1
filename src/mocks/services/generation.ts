@@ -6,7 +6,7 @@ import { stylePresets } from '../fixtures/styles'
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 export const mockGenerationService: GenerationService = {
-  async generate(_sessionId, _paymentToken, _generationId, _photo, _scene, styles, onProgress) {
+  async generate(_sessionId, _entitlementToken, _generationId, _photo, styles, onProgress) {
     if (!styles.length || styles.length > productConfig.maxStylesDefault) {
       throw new Error(`单次最多生成 ${productConfig.maxStylesDefault} 种风格`)
     }
@@ -43,7 +43,7 @@ const mockAgentPrompt = (backgroundName: string, poseHint: string) => [
 ].join('\n')
 
 export const mockAgentGenerationService: AgentGenerationService = {
-  async generate(_sessionId, _paymentToken, _generationId, _photo, background, onProgress) {
+  async generate(_sessionId, _entitlementToken, _generationId, _photo, background, onProgress) {
     let jobs: GenerationJob[] = [{ id: `agent-mock-${Date.now()}`, styleId: background.id, status: 'queued', progress: 0 }]
     onProgress(jobs)
     for (let step = 1; step <= 8; step += 1) {
@@ -67,7 +67,7 @@ export const mockBackgroundService: BackgroundService = {
 }
 
 export const mockShareService: ShareService = {
-  async create(_sessionId, _paymentToken, assets) {
+  async create(_sessionId, _entitlementToken, assets) {
     await wait(300)
     const id = assets.map((asset) => asset.styleId).join('-') || 'result'
     return {

@@ -1,4 +1,8 @@
-# MySQL 5.7 SQL scripts
+# Historical MySQL 5.7 SQL scripts
+
+These files belong to the retired Node/Express runtime. The active runtime uses
+the Alembic migrations under `backend/app/db/migrations/versions/`; do not use
+these SQL files for a new deployment.
 
 These scripts target the `aiaimage` database and do not contain server addresses,
 database passwords, administrator passwords, or application secrets.
@@ -83,10 +87,9 @@ MYSQL_PASSWORD=<application-password>
 MYSQL_DATABASE=aiaimage
 ```
 
-The application commands remain available for environments where the application
-account already has schema migration permissions:
+For the active runtime, use:
 
 ```bash
-npm run db:migrate
-npm run db:import-json
+python -m alembic -c backend/alembic.ini upgrade head
+python -m backend.app.admin_cli import-legacy --input <legacy-json>
 ```

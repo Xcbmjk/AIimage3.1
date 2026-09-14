@@ -16,8 +16,8 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:8787',
-        timeout: 360_000,
-        proxyTimeout: 360_000,
+        timeout: 660_000,
+        proxyTimeout: 660_000,
       },
     },
   },
@@ -32,6 +32,6 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
-    include: ['src/**/*.test.{ts,tsx}', 'server/**/*.test.ts'],
+    include: ['src/**/*.test.{ts,tsx}'],
   },
 })

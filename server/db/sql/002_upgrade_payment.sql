@@ -20,12 +20,30 @@ SET @schema_name = DATABASE();
 ALTER TABLE `orders`
   MODIFY COLUMN `status` ENUM('pending','paid','expired','refunded') NOT NULL;
 
+CREATE TABLE IF NOT EXISTS `redeem_codes` (
+  `id` CHAR(36) NOT NULL, `code_hash` CHAR(64) NOT NULL, `code_prefix` VARCHAR(16) NOT NULL,
+  `status` ENUM('available','reserved','redeemed','disabled') NOT NULL DEFAULT 'available',
+  `session_id` VARCHAR(100) NULL, `order_id` VARCHAR(80) NULL, `reserved_at` DATETIME NULL,
+  `redeemed_at` DATETIME NULL, `expires_at` DATETIME NULL, `created_at` DATETIME NOT NULL,
+  PRIMARY KEY (`id`), UNIQUE KEY `uq_redeem_code_hash` (`code_hash`), KEY `idx_redeem_status` (`status`, `expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `mini_program_tokens` (
+  `id` CHAR(36) NOT NULL, `token_hash` CHAR(64) NOT NULL,
+  `status` ENUM('active','claimed','disabled') NOT NULL DEFAULT 'active', `code_id` CHAR(36) NULL,
+  `claimed_at` DATETIME NULL, `expires_at` DATETIME NULL, `created_at` DATETIME NOT NULL,
+  PRIMARY KEY (`id`), UNIQUE KEY `uq_mini_program_token_hash` (`token_hash`), KEY `idx_mini_token_status` (`status`, `expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 SET @sql = IF(
   EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema = @schema_name AND table_name = 'orders' AND column_name = 'payment_mode'),
   'SELECT 1',
-  'ALTER TABLE `orders` ADD COLUMN `payment_mode` ENUM(''mock'',''wechat-native'') NOT NULL DEFAULT ''mock'' AFTER `status`'
+  'ALTER TABLE `orders` ADD COLUMN `payment_mode` ENUM(''mock'',''wechat-native'',''voucher'') NOT NULL DEFAULT ''mock'' AFTER `status`'
 );
 PREPARE statement FROM @sql; EXECUTE statement; DEALLOCATE PREPARE statement;
+
+ALTER TABLE `orders`
+  MODIFY COLUMN `payment_mode` ENUM('mock','wechat-native','voucher') NOT NULL DEFAULT 'mock';
 
 CREATE TABLE IF NOT EXISTS `background_versions` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

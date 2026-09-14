@@ -1,8 +1,8 @@
-import type { BackgroundPreset, CapturedPhoto, Entitlement, GeneratedAsset, GenerationJob, PaymentOrder, ScenePreset, ShareLink, StylePreset } from '../types'
+import type { BackgroundPreset, CapturedPhoto, Entitlement, EntitlementRedemption, GeneratedAsset, GenerationJob, ShareLink, StylePreset } from '../types'
 
 export interface EntitlementService {
   validate(code: string): Promise<Entitlement>
-  consume(code: string, sessionId: string): Promise<Entitlement>
+  consume(code: string, sessionId: string): Promise<EntitlementRedemption>
   restore(code: string, sessionId: string): Promise<void>
 }
 
@@ -15,10 +15,9 @@ export interface CameraService {
 export interface GenerationService {
   generate(
     sessionId: string,
-    paymentToken: string,
+    entitlementToken: string,
     generationId: string,
     photo: CapturedPhoto,
-    scene: ScenePreset,
     styles: StylePreset[],
     onProgress: (jobs: GenerationJob[]) => void,
   ): Promise<GeneratedAsset[]>
@@ -27,7 +26,7 @@ export interface GenerationService {
 export interface AgentGenerationService {
   generate(
     sessionId: string,
-    paymentToken: string,
+    entitlementToken: string,
     generationId: string,
     photo: CapturedPhoto,
     background: BackgroundPreset,
@@ -35,13 +34,8 @@ export interface AgentGenerationService {
   ): Promise<{ assets: GeneratedAsset[]; prompt: string }>
 }
 
-export interface PaymentService {
-  create(sessionId: string): Promise<PaymentOrder>
-  status(orderId: string, sessionId: string): Promise<{ status: 'pending' | 'paid' | 'expired'; accessToken?: string }>
-}
-
 export interface ShareService {
-  create(sessionId: string, paymentToken: string, assets: GeneratedAsset[]): Promise<ShareLink>
+  create(sessionId: string, entitlementToken: string, assets: GeneratedAsset[]): Promise<ShareLink>
 }
 
 export interface StyleService {

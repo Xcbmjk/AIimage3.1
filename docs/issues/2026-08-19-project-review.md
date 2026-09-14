@@ -3,9 +3,9 @@
 ## 文档信息
 
 - 审查时间：`2026-08-19 22:33:13 +08:00`
-- 最后更新时间：`2026-09-01 15:00:00 +08:00`
+- 最后更新时间：`2026-09-10`
 - 审查范围：项目架构、支付、生图、作品分享、安全性、可靠性、前端流程、测试、部署、监控与运营
-- 当前汇总：待处理 17 项，处理中 5 项，已解决 3 项，暂不处理 0 项
+- 当前汇总：待处理 11 项，处理中 10 项，已解决 6 项，暂不处理 0 项
 
 ## 状态定义
 
@@ -35,29 +35,40 @@
 | ISSUE-002 | P0 | 已解决 | 一次支付凭证可以无限次调用生图 |
 | ISSUE-003 | P0 | 处理中 | 缺少全局限流和模型供应商并发控制 |
 | ISSUE-004 | P0 | 处理中 | 本地 JSON 和文件存储不适合生产环境 |
-| ISSUE-005 | P0 | 待处理 | 分享接口信任客户端提交的图片数据 |
+| ISSUE-005 | P0 | 处理中 | 分享接口信任客户端提交的图片数据 |
 | ISSUE-006 | P1 | 待处理 | 上游图片完整读入内存后才检查大小 |
 | ISSUE-007 | P1 | 待处理 | 上游图片 URL 的 SSRF 防护不完整 |
 | ISSUE-008 | P1 | 处理中 | 微信支付下单请求没有超时限制 |
-| ISSUE-009 | P1 | 待处理 | 数值配置和生产配置校验不完整 |
+| ISSUE-009 | P1 | 处理中 | 数值配置和生产配置校验不完整 |
 | ISSUE-010 | P1 | 待处理 | 图片校验信任声明类型并允许分享 SVG |
 | ISSUE-011 | P1 | 待处理 | 生图重试会刷新页面并丢失已支付会话 |
 | ISSUE-012 | P1 | 待处理 | 页面刷新或崩溃后无法恢复支付及生图状态 |
 | ISSUE-013 | P1 | 待处理 | 未实现空闲超时和隐私清场 |
 | ISSUE-014 | P1 | 待处理 | 摄像头和上传失败缺少用户提示 |
 | ISSUE-015 | P1 | 待处理 | 产品数量限制和过期文案与实际行为不一致 |
-| ISSUE-016 | P1 | 待处理 | 演示模式和生产模式的服务边界不完整 |
+| ISSUE-016 | P1 | 已解决 | 演示模式和生产模式的服务边界不完整 |
 | ISSUE-017 | P2 | 待处理 | 付费生产流程的自动化测试覆盖不足 |
 | ISSUE-018 | P2 | 待处理 | 远程仓库没有持续集成工作流 |
 | ISSUE-019 | P2 | 待处理 | 直接依赖使用 `latest` 版本范围 |
-| ISSUE-020 | P2 | 待处理 | 缺少生产部署和一体机设备运维方案 |
+| ISSUE-020 | P2 | 处理中 | 缺少生产部署和一体机设备运维方案 |
 | ISSUE-021 | P2 | 待处理 | 缺少运营指标和告警能力 |
 | ISSUE-022 | P2 | 处理中 | 缺少运营管理后台 |
 | ISSUE-023 | P1 | 处理中 | 人物无法与用户指定的景点形成可控融合 |
 | ISSUE-024 | P1 | 已解决 | 公网 HTTP 环境下 crypto.randomUUID 不可用导致首页黑屏 |
 | ISSUE-025 | P1 | 处理中 | GPT Image 2 上游账号无访问权限导致真实生图失败 |
+| ISSUE-027 | P1 | 已解决 | 页面固定高度与卡片布局导致部分显示器出现滚动或内容越界 |
 
 ## 问题详情
+
+### ISSUE-027：页面固定高度与卡片布局导致部分显示器出现滚动或内容越界
+
+- 优先级：`P1`
+- 状态：`已解决`
+- 发现时间：`2026-09-08 11:50:00 +08:00`
+- 解决时间：`2026-09-08 12:00:00 +08:00`
+- 解决情况：根页面、应用容器和每个流程屏统一绑定动态视口宽高，禁止页面滚动与过度滚动；短屏收紧间距、图片和操作区，手机竖屏的风格选择改为三列两行，横屏增加确认页、风格、背景、生成、结果和下载页专用布局，确保内容在当前显示器范围内完成排版。
+- 代码证据：`src/styles/global.css`、`e2e/kiosk-flow.spec.ts`。
+- 验证证据：新增 430x932 竖屏和 1280x720 横屏回归测试，逐项检查根页面无横向或纵向滚动，欢迎页按钮、全部风格卡和底部操作区均完整落在视口内。提交：`3f522b2`。
 
 ### ISSUE-025：GPT Image 2 上游账号无访问权限导致真实生图失败
 
@@ -70,6 +81,9 @@
 - 运行证据：`logs/generation.log` 记录 `provider=gpt-image-2` 的 `/api/generation` 请求返回 502；上游响应摘要为“上游账号无访问权限，请联系管理员”。
 - 影响：真实 GPT Image 2 生图无法完成，前端显示“AI 服务暂时不可用，请稍后重试”。
 - 建议方向：确认 `GPT_IMAGE_BASE_URL` 对应服务是否已为当前 API Key 开通 `gpt-image-2` 和 `/images/edits` 权限，核对模型名称、账户额度与接口套餐；修复后运行真实 provider 烟测。
+- 2026-09-08 真实 Gemini 生图模型路由失败：当前运行配置切换为 `gemini-3.1-flash-image` 后，经典生图连续请求（`ink`、`gold` 等不同风格）均由上游返回 `503`，原因标记为 `model_not_found`，服务端对外返回 `502 GENERATION_FAILED`。证据：`logs/generation.log` 中 requestId `0db94375-7fe6-4098-abed-abbcaab52ac2`（18:22:57 +08:00）和 `8e8d6d31-920c-4075-818e-86a81cc8958e`（18:34:52 +08:00）。当前 `/api/health` 为 `ok` 仅表示配置非空；需核对 `GEMINI_IMAGE_BASE_URL` 对应网关的 `/chat/completions` 模型映射、模型授权和接口路径。后续 Agent 的 `409 agent.request_mismatch` 是同一支付任务的幂等冲突，未进入上游调用。
+- 2026-09-10 后台图片模型配置接入经典生图链路：默认 `image_generation` 配置现在由 `GenerationService` 在每次任务执行前从数据库读取，并统一按 OpenAI 兼容图片协议创建供应商；经典模式提交 JSON 到数据库配置的 `/images/generations`，请求 `response_format=b64_json`，Agent 合成继续提交双图到 `/images/edits`。旧环境变量图片配置仅在数据库没有启用默认图片模型时作为回退，不再覆盖后台配置。健康接口新增 `checks.imageGeneration`，返回当前模型、供应商、两个接口路径和响应格式，不包含 Key。
+- 2026-09-10 运行验证：数据库当前默认图片配置为 `tokenworldai / gpt-image-2`，经典接口 `/images/generations`、编辑接口 `/images/edits`、响应格式 `b64_json`；数据库 `/models` 获取成功并返回包含 `gpt-image-2` 的模型列表。新增回归测试验证数据库配置优先于 `AI_PROVIDER` 环境回退；`python -m pytest backend/tests/test_generation_api.py backend/tests/test_providers.py backend/tests/test_admin_console.py -q`（18 项）、`npm run lint` 和 `git diff --check` 通过。一次真实经典生图任务仍处于 `processing`，尚未取得新的上游图片结果，因此 ISSUE-025 继续保持 `处理中`。
 
 ### ISSUE-024：公网 HTTP 环境下 crypto.randomUUID 不可用导致首页黑屏
 
@@ -135,6 +149,10 @@
 - 发现时间：`2026-08-19 22:33:13 +08:00`
 - 开始处理时间：`2026-08-20 10:39:01 +08:00`
 - 解决情况：日志确认即梦在单批并发 2 个风格时返回 `429` 和 `Request Has Reached API Concurrent Limit`。已暂时将单个生图请求的风格并发数从 2 调整为 1，使最多 4 个风格按顺序生成。该修改只缓解即梦账号并发限制，尚未实现跨请求全局并发控制、队列、限流和退避重试，因此本问题仍为处理中。
+- 2026-09-05 修复记录：发现 `Semaphore` 在有排队任务时完成容量交接后未正确维护 `active` 计数，导致后续请求可能永久等待。已修正交接逻辑，并新增“排队任务完成后仍可接受新任务”的回归测试；全局队列长度、跨实例限流、供应商退避重试和成本预算仍未完成，状态保持 `处理中`。
+- 2026-09-05 验证证据：`npx vitest run server/lib/rateLimit.test.ts`（3 个测试通过）；`npm run lint` 通过；`git diff --check` 通过。
+- 2026-09-06 限流内存保护：限流 bucket 增加定时过期清理、10000 条硬上限和客户端 key 200 字符截断，避免伪造会话键导致单进程内存持续增长；新增超长 key 回归测试。跨实例共享限流仍需 Redis 等外部存储，状态保持 `处理中`。
+- 2026-09-06 验证证据：`npx vitest run server/lib/rateLimit.test.ts`（4 个测试通过）；`npm run lint`、`npm test`（13 个测试文件、47 个测试）和 `npm run build` 全部通过。
 - 代码证据：`server/index.ts:22-48`、`server/routes/generation.ts:70-143`、`server/routes/payments.ts:46-91`、`server/routes/shares.ts:13-33`
 - 影响：多个请求可以绕过单个请求内部最多并发两个风格的限制，造成模型费用放大、内存或磁盘耗尽。公开的订单和日志接口也可能被滥用。
 - 建议方向：增加 IP、会话或支付凭证级限流，增加模型供应商全局并发信号量或任务队列，限制队列长度和成本预算，并对超限请求返回带 `Retry-After` 的 `429`。
@@ -153,6 +171,12 @@
 - 状态：`处理中`
 - 发现时间：`2026-08-19 22:33:13 +08:00`
 - 解决情况：订单、支付凭证和生图权益已切换到 MySQL；作品资产已开始服务端落盘并记录数据库元数据。分享记录彻底数据库化、过期清理和服务重启后的完整作品恢复仍待完成。
+- 2026-09-06 修复记录：生产环境现在强制要求 `MYSQL_ENABLED=true`，未启用 MySQL 时服务在配置加载阶段拒绝启动，避免生产误用 JSON 单机回退存储。作品/分享记录数据库化和重启恢复仍未完成，状态保持 `处理中`。
+- 2026-09-06 验证证据：新增 `server/config.test.ts` 覆盖生产环境禁用 MySQL 的拒绝路径；`npm run lint`、`npm test`（12 个文件、44 个测试）和 `npm run build` 全部通过。
+- 2026-09-06 启动策略修复：生产环境数据库迁移失败时不再继续监听端口，直接以非零状态退出；开发环境继续记录错误后启动，便于本地排查。该策略避免生产出现“服务已启动但支付/任务不可用”的假健康状态。
+- 2026-09-06 运行验证限制：尝试使用不可用 MySQL 端口验证生产迁移失败退出时，进程先因测试环境未提供微信支付 PEM 文件而在路由初始化阶段退出（`ENOENT`），未能走到迁移分支；代码路径已由构建、测试和静态检查验证，待具备完整生产证书配置后补充端到端启动验证。
+- 2026-09-09 Python 后端迁移开始：新增 FastAPI/SQLAlchemy/Alembic 运行骨架与兑换权益 schema，兑换码改为管理员生成、游客一次性兑换；支付订单、小程序 token 不进入新 Python 运行时。当前仅完成兑换权益阶段，目录、生图、分享和后台完整会话迁移仍在处理中。
+- 2026-09-09 兑换权益阶段验证：`python -m pytest backend/tests`（6 个测试通过），覆盖批量生成、管理员鉴权、兑换成功、重复兑换、过期/禁用码和数据库仅保存兑换码/访问令牌哈希；`python -m compileall -q backend` 与 `git diff --check` 通过。MySQL 并发锁竞争和完整生图链路待后续阶段验证。
 - 代码证据：`server/payment/orderStore.ts`、`server/share/shareStore.ts`、`.env.example:14`、`.env.example:17`
 - 影响：当前存储只能支持单实例，使用同步文件操作，不便备份和扩容；磁盘没有容量限制，过期清理由请求触发。
 - 建议方向：使用关系型数据库存储订单、权益、生图任务、作品和分享记录，使用对象存储保存图片，并通过定时任务清理过期数据。给商户订单号、微信交易号和生图幂等键增加唯一索引。
@@ -160,12 +184,20 @@
 ### ISSUE-005：分享接口信任客户端提交的图片数据
 
 - 优先级：`P0`
-- 状态：`待处理`
+- 状态：`处理中`
 - 发现时间：`2026-08-19 22:33:13 +08:00`
-- 解决情况：尚未开始
-- 代码证据：`server/routes/shares.ts:13-25`、`src/services/httpShare.ts:8-12`
+- 开始处理时间：`2026-09-06 13:30:00 +08:00`
+- 解决情况：分享接口已拒绝客户端同时提交 `imageUrl` 或仅提交 Data URL 的请求，要求使用服务端生成的 `assetId`；后端继续校验资产 UUID、订单会话归属和过期时间。完整分享记录数据库化仍未完成。
+- 代码证据：`server/routes/shares.ts:13-40`、`src/services/httpShare.ts:8-12`
 - 影响：已支付客户端可以将任意 Data URL 当作生成作品上传。大图还会从服务端发送到浏览器，再通过 JSON 传回服务端，产生重复传输和内存占用。
 - 建议方向：生图完成后由服务端保存作品并返回作品 ID。创建分享时只接收作品 ID，并验证作品属于当前已授权订单和会话。
+- 本次验证：`npx eslint server/routes/shares.ts`、`npm run build` 通过；尚未补充路由级自动化测试。
+- 2026-09-06 请求体保护：分享接口请求体限制从 `64mb` 收紧为 `16kb`，因为请求仅包含服务端资产 ID，不再允许客户端上传图片数据；避免无效大 JSON 在校验前占用内存，状态保持 `处理中`。
+- 2026-09-06 事件请求体保护：客户端操作日志接口 `/api/events` 单独限制为 `16kb`，避免无效大 JSON 复用生图图片请求的内存上限；事件字段白名单和敏感字段过滤保持不变，状态保持 `待处理`。
+- 2026-09-06 HTTP 安全头补充：API 全局增加 `X-Content-Type-Options: nosniff`、`X-Frame-Options: DENY` 和严格 Referer 策略；生产环境额外发送一年期 HSTS，降低点击劫持、MIME 嗅探和明文降级风险，本地 HTTP 开发不启用 HSTS。
+- 2026-09-06 验证证据：`npm run lint`、`npm test`（13 个测试文件、52 个测试）和 `npm run build` 全部通过。
+- 2026-09-09 Python 迁移处理记录：新增 `POST /api/shares` 及分享页、图片查看和下载接口。创建分享只接受 `assetId`，服务端按兑换权益会话、任务成功状态和资产过期时间校验；分享记录持久化到 `shares` 表，图片继续从服务端 `output` 资产读取。客户端不再发送 `X-Payment-Token` 或图片 Data URL。
+- 2026-09-09 验证证据：`python -m pytest backend/tests/test_generation_api.py -q`（3 个测试通过），覆盖分享创建、页面、图片、下载、伪造资产和额外 `imageUrl` 字段拒绝；完整 Python 测试为 21 个通过，问题仍保持 `处理中`，待旧 Node 运行时代码下线并完成数据库迁移联调。
 
 ### ISSUE-006：上游图片完整读入内存后才检查大小
 
@@ -176,6 +208,11 @@
 - 代码证据：`server/lib/images.ts:23-29`
 - 影响：上游返回超大或持续响应的图片时，服务会先完整读入内存，再执行 15 MB 检查；多个并发请求可能导致 Node 进程内存耗尽。
 - 建议方向：先检查 `Content-Length`，采用流式读取并累计字节数，超过上限立即终止，同时对 Base64 格式的模型返回设置相同大小限制。
+- 2026-09-06 Base64 响应保护：`normalizeImage` 现在限制供应商返回的 Base64 编码长度并拒绝非法字符，避免超大或畸形响应在后续图片解析前造成内存压力；新增回归测试。流式上游响应和更严格的 provider 独立大小预算仍可继续完善，状态保持 `待处理`。
+- 2026-09-06 上游传输安全补充：当前启用的 GPT provider 和已配置的 Vision endpoint 强制使用 HTTPS，避免模型 API 密钥及图片数据通过明文 HTTP 传输；Seedream、Jimeng、Gemini 原有 HTTPS 校验保持不变。新增生产配置回归测试，状态保持 `待处理`。
+- 2026-09-06 验证证据：`npx vitest run server/lib/images.test.ts`（4 个测试通过）；`npm run lint`、`npm test`（13 个测试文件、51 个测试）和 `npm run build` 全部通过。
+- 2026-09-09 Python 迁移处理记录：新增 Pillow 图片实际解码校验，统一限制 JPEG、PNG、WebP、单边不超过 12000 像素且总像素不超过 4000 万；新增受控 UUID 资产目录和空间不足检查，Python 生图上传将复用该校验，状态保持 `处理中`。
+- 2026-09-09 验证证据：`python -m pytest backend/tests/test_images.py backend/tests/test_storage.py`（5 个测试通过），覆盖损坏图片、大小限制、像素上限和路径穿越；`python -m compileall -q backend` 与 `git diff --check` 通过。
 
 ### ISSUE-007：上游图片 URL 的 SSRF 防护不完整
 
@@ -186,6 +223,9 @@
 - 代码证据：`server/lib/images.ts:19-29`
 - 影响：仅限制 HTTPS 不能阻止访问 localhost、环回地址、私有网络、DNS 重绑定地址或重定向后的内部服务。
 - 建议方向：优先使用模型供应商资源域名白名单；解析并拒绝本地和私网地址；校验每次重定向目标并限制重定向次数。
+- 2026-09-06 地址分类补充：上游图片下载现在额外拒绝 IPv4-mapped IPv6、运营商共享地址 `100.64.0.0/10`、文档保留地址、链路本地/组播地址及 IPv4 `192.0.0.0/24` 等特殊网段，避免 DNS 返回特殊地址绕过现有私网检查；新增网络地址回归测试。跨实例出口网络策略仍需在部署层配置，状态保持 `待处理`。
+- 2026-09-06 验证证据：`npx vitest run server/lib/images.test.ts`（3 个测试通过）；`npm run lint`、`npm test`（13 个测试文件、49 个测试）和 `npm run build` 全部通过。
+- 2026-09-09 Python 迁移处理记录：新增服务端受控资产读取与路径解析，拒绝根目录外路径；上游 URL 下载和 Provider 适配仍待迁移，状态保持 `处理中`。
 
 ### ISSUE-008：微信支付下单请求没有超时限制
 
@@ -222,6 +262,8 @@
 - 代码证据：`server/lib/images.ts:3-11`、`server/share/shareStore.ts:5-11`、`server/share/shareStore.ts:80-86`
 - 影响：Data URL 声明的 MIME 类型可能与实际文件内容不一致。超大像素图片或损坏图片可能消耗大量资源，SVG 还会扩大主动内容攻击面。
 - 建议方向：验证文件头，解码并限制像素尺寸，移除 EXIF 和 GPS 信息，统一重新编码图片；除非模型供应商有明确需求，否则取消 SVG 分享支持。
+- 2026-09-09 Python 迁移处理记录：Python 资产存储只接受 Pillow 解码出的 JPEG、PNG、WebP，SVG 不进入新资产路径；分享和 Provider 输出校验将在后续阶段复用同一实现，状态保持 `处理中`。
+- 2026-09-09 验证证据：`python -m pytest backend/tests/test_images.py backend/tests/test_storage.py`（5 个测试通过）。
 
 ### ISSUE-011：生图重试会刷新页面并丢失已支付会话
 
@@ -237,6 +279,16 @@
 
 - 优先级：`P1`
 - 状态：`待处理`
+- 2026-09-06 处理记录：经典与 Agent 生图在内存缓存缺失时，可从 MySQL `assets` 表读取仍未过期的服务端资产并重建结果响应，覆盖服务重启后的已完成任务恢复。仍未接入队列 worker 处理重启时处于 `processing` 的任务，支付页面和前端会话恢复也未完成，状态保持 `待处理`。
+- 2026-09-06 验证证据：`npm run lint`、`npm test`（12 个文件、44 个测试）和 `npm run build` 均通过；未具备可用 MySQL 测试数据，暂未完成真实重启后 HTTP 恢复烟测。
+- 2026-09-06 增量修复：MySQL 生图权益预占在发现任务 `processing` 且超过 15 分钟无更新时，会原子刷新任务时间和尝试次数并允许同一幂等请求接管执行，避免服务重启后的任务永久卡住。仍缺少独立 worker、队列消费和真实重启联调，状态保持 `待处理`。
+- 2026-09-06 资产回滚补充：classic/Agent 生图在输出文件已落盘但 `assets` 数据库写入失败时，现在会尝试删除刚写入的文件，避免失败任务遗留孤立输出；删除失败仍保留原数据库错误并交由后续清理扫描。新增 `AssetStore.remove` 受控路径删除能力，状态保持 `待处理`。
+- 2026-09-06 失败状态容错：生图异常处理更新任务失败状态时改为尽力而为；数据库暂时不可用或状态更新失败时单独记录 `generation.failure_state_update_failed`，仍返回原始供应商/输入错误，避免二次数据库异常覆盖响应或触发未处理异常。
+- 2026-09-07 支付令牌格式校验：MySQL 访问令牌现在必须严格包含 payload 和 signature 两段，拒绝多余点号的畸形令牌，并在访问数据库前返回未授权；新增支付仓储回归测试。
+- 2026-09-07 验证证据：`npx vitest run server/payment/mysqlOrderRepository.test.ts`（3 个测试通过）；`npm run lint`、`npm test`（13 个测试文件、53 个测试）和 `npm run build` 全部通过。
+- 2026-09-06 验证证据：`npm run lint`、`npm test`（13 个测试文件、52 个测试）和 `npm run build` 全部通过。
+- 2026-09-06 验证证据：`npm run lint`、`npm test`（13 个测试文件、52 个测试）和 `npm run build` 全部通过。
+- 2026-09-06 验证证据：`npm run lint`、`npm test`（12 个文件、44 个测试）和 `npm run build` 全部通过；因当前测试环境 MySQL 不可用，未完成真实数据库锁竞争验证。
 - 发现时间：`2026-08-19 22:33:13 +08:00`
 - 解决情况：尚未开始
 - 代码证据：`src/features/session/SessionProvider.tsx:7-10`、`src/features/session/sessionReducer.ts:3-15`
@@ -263,6 +315,11 @@
 - 影响：文件类型不支持、文件过大、读取失败、权限拒绝或设备故障时，界面可能没有反馈，或者静默切换到演示图片。
 - 建议方向：显示可操作的错误提示并明确标出演示模式；增加图片压缩、方向处理、摄像头恢复和拍摄质量提示。
 
+#### 2026-09-04 现场补充
+
+- Android 手机通过开发服务器的局域网 `http://<电脑IP>:5173` 访问时，浏览器处于非安全上下文，`navigator.mediaDevices` 可能不可用，因此无法调用 `getUserMedia`；当前代码会进入示例照片回退。
+- 解决方向：手机真机拍摄需要使用 HTTPS 域名/局域网 HTTPS，或在支持的浏览器中使用安全调试隧道；同时在页面提示“请使用 HTTPS 访问并允许摄像头权限”。
+
 ### ISSUE-015：产品数量限制和过期文案与实际行为不一致
 
 - 优先级：`P1`
@@ -276,12 +333,16 @@
 ### ISSUE-016：演示模式和生产模式的服务边界不完整
 
 - 优先级：`P1`
-- 状态：`待处理`
+- 状态：`已解决`
 - 发现时间：`2026-08-19 22:33:13 +08:00`
-- 解决情况：尚未开始
-- 代码证据：`src/services/index.ts`、`src/config/product.ts:7`、`src/features/kiosk/KioskFlow.tsx:362-363`
-- 影响：模拟体验码服务仍然存在但基本未使用，`demoMode` 没有作用，`redeem` 与 `camera` 页面重复，浏览器生图模式还可能与服务端模型配置不一致。
-- 建议方向：选择并完整实现一种商品权益流程；由服务端提供安全的公开运行配置，避免浏览器和服务端模式漂移。
+- 解决时间：`2026-09-09`
+- 解决情况：兑换码改为服务端管理的真实权益流程。后台可生成短兑换码和小程序一次性 token；小程序 token 只能领取一次兑换码，游客兑换成功后获得与支付一致的访问令牌，经典生图、Agent 生图和分享继续复用现有授权与幂等逻辑。API 模式使用 HTTP 服务，mock 模式保留离线体验。
+- 代码证据：`server/redeem/redeemStore.ts`、`server/routes/entitlements.ts`、`server/routes/admin.ts`、`src/services/httpEntitlement.ts`、`src/features/kiosk/KioskFlow.tsx`、`docs/redeem-codes-spring-boot.md`
+- 验证证据：兑换码生成、单次小程序 token 领取、兑换码单次消费和生图访问令牌返回测试通过；小程序可直接在 `X-Mini-Program-Token` 请求头传入自有 token，服务端按原文哈希记录且不解析格式；后台“本次生成结果”支持一键复制全部明文，剪贴板不可用时会自动选中文本作为回退；`npm run lint`、`npm test`、`npm run build` 通过。相关提交：`0e68894`、`f64d220`（服务端/后台/文档）、`ee47f84`（访客端兑换流程）、`1f8570d`（后台复制体验）。
+- 2026-09-09 完成记录：产品确认当前不需要其他小程序调用或领取兑换码，Python 后端已仅保留管理员后台批量生成兑换码、设置有效期和查看状态；兑换码只能在后台生成，游客在一体机页面兑换，每个兑换码只能使用一次。已删除 `mini_program_tokens`、小程序 token 领取接口及相关管理入口，并新增旧领取路径的明确 404 响应。
+- 解决时间：`2026-09-09`
+- 相关提交或 PR：`6c2cd78`（Python 迁移运行时收尾）
+- 验证证据：`python -m pytest backend/tests -q` 通过；全新 SQLite 数据库执行 `python -m alembic -c backend/alembic.ini upgrade head` 成功；独立 Uvicorn HTTP 烟测验证 `/api/health`、`/api/catalog`、`/admin/`、管理员生成兑换码、游客兑换、经典生图、Agent 生图、分享页、图片查看和下载均成功，旧 `POST /api/redeem-codes/claim` 返回 404。
 
 ### ISSUE-017：付费生产流程的自动化测试覆盖不足
 
@@ -319,9 +380,24 @@
 ### ISSUE-020：缺少生产部署和一体机设备运维方案
 
 - 优先级：`P2`
-- 状态：`待处理`
+- 状态：`处理中`
 - 发现时间：`2026-08-19 22:33:13 +08:00`
 - 解决情况：尚未开始
+- 2026-09-06 处理记录：补充校验 `LOG_LEVEL` 枚举、Seedream/Jimeng provider HTTPS 地址、Jimeng 宽高、轮询间隔与超时范围；非法配置会在服务启动阶段直接拒绝。生产 mock 限制保持不变，其他 provider 参数和公网部署策略仍需继续完善，状态保持 `待处理`。
+- 2026-09-06 运行时补充：API 现在保存 HTTP server、支付对账器清理函数和 MySQL 连接池，并在 `SIGTERM`/`SIGINT` 时按顺序停止对账、停止接收请求、关闭数据库；启动失败也会尝试释放数据库连接。部署守护、TLS、备份、监控和磁盘保护仍未完成，状态保持 `待处理`。
+- 2026-09-06 启动失败清理补充：HTTP `listen` 现在等待 `listening`/捕获异步 `error`，端口占用或绑定失败会进入统一启动失败路径，释放维护定时器、支付对账器和数据库连接；正常启动日志和端口行为保持不变。生产端到端启动仍受微信证书和 MySQL 环境限制，状态保持 `待处理`。
+- 2026-09-06 存储维护补充：服务启动时及每小时后台清理过期分享目录、长期未更新的 source/output 资产，停机时停止清理定时器；清理仅记录删除数量，不记录图片内容。数据库孤立记录回收、磁盘容量阈值和对象存储迁移仍未完成，状态保持 `待处理`。
+- 2026-09-06 数据库清理补充：维护任务同时删除 `assets`、`shares` 中已过期元数据及 `admin_sessions` 中已过期会话，避免数据库索引长期膨胀；删除数量纳入结构化日志，订单和生图历史不受影响。数据库孤立任务记录、磁盘容量阈值和对象存储迁移仍未完成，状态保持 `待处理`。
+- 2026-09-06 孤立资产回收补充：维护任务每次最多扫描 500 条未过期 `assets`，读取对应文件失败时按 `id + file_path` 原子删除元数据，处理手工删文件或存储迁移造成的孤立记录；扫描与删除数量纳入结构化日志。数据库孤立任务记录和磁盘容量阈值仍未完成，状态保持 `待处理`。
+- 2026-09-06 维护并发保护：后台存储维护增加进程内运行锁，上一轮清理未完成时跳过下一轮，避免文件扫描、孤立资产检查和数据库删除重叠占用资源；维护异常仍会在 `finally` 释放锁。数据库孤立任务记录和磁盘容量阈值仍未完成，状态保持 `待处理`。
+- 2026-09-06 磁盘保护补充：新增 `STORAGE_MIN_FREE_BYTES`（默认 512 MB），所有资产写入前通过 `statfs` 检查剩余空间，低于“保留阈值 + 本次文件大小”时拒绝写入，避免磁盘耗尽导致服务连锁失败；配置示例已同步更新。监控告警、对象存储迁移和跨实例容量治理仍未完成，状态保持 `待处理`。
+- 2026-09-06 健康检查补充：`/api/health` 的 storage 检查现在返回可用字节数和保留阈值，空间不足时标记为 `degraded`，同时保留目录不可写时的 `down` 判定，便于监控在写入失败前发现磁盘风险。监控告警接入仍未完成，状态保持 `待处理`。
+- 2026-09-06 生产密钥保护：生产环境现在要求 `ADMIN_SESSION_SECRET` 至少 32 字节，拒绝默认值和短密钥；该密钥用于支付访问令牌签名，开发环境默认值保持兼容。新增配置回归测试，完整测试现为 13 个测试文件、50 个测试。
+- 2026-09-06 验证证据：`npm run lint`、`npm test`（13 个测试文件、49 个测试）和 `npm run build` 全部通过。
+- 2026-09-06 验证证据：`npm run lint`、`npm test`（11 个文件、43 个测试）和 `npm run build` 均通过。
+- 2026-09-09 处理记录：新增 `docs/deployment-python.md`，明确 Python/FastAPI、MySQL 本机连接、Alembic 迁移、数据库管理员初始化、兑换码后台操作、systemd 守护、端口策略、Android APK 构建、备份、健康检查和故障排查。同步将开发 API 脚本切换为 Uvicorn，并修正生产 HTTP 部署下后台 Cookie 的 `Secure` 判定。进程守护、备份命令和设备操作流程已有可执行手册，但尚未在目标远程服务器完成现场演练，监控告警和远程升级仍待补齐，状态保持 `处理中`。
+- 2026-09-09 运行验收补充：本机 MySQL 使用 `aiomysql` 时，SQLAlchemy `pool_pre_ping` 会调用不兼容的 `ping(reconnect)` 签名，导致 `/api/catalog` 查询返回 500；已对 MySQL 连接池关闭该预检查并保留连接回收策略，后续通过数据库连接失败和服务重启验收验证。
+- 代码证据：`package.json`、`backend/app/api/admin_redeem_codes.py`、`backend/tests/test_admin_auth.py`、`docs/deployment-python.md`。
 - 2026-08-27 部署检查记录：当前项目可采用单 Node 进程部署，`npm run build` 生成 `dist/` 和 `dist-server/`，`npm run start` 同时托管静态页面与 `/api`；本地编译产物启动后 `/api/health` 返回 `ok: true`、首页返回 200。仓库仍未提供 Dockerfile、Nginx、systemd/PM2、备份或监控配置，因此问题状态保持 `待处理`。
 - 2026-09-01 开发部署补充：新增 `npm run server:dev`，服务器启动面板可用一个命令执行 `npm ci --include=dev` 后启动 Vite 和 Express；同时声明 Node.js `>=22.12.0`。该入口仅用于当前开发式部署，完整生产运维方案仍待处理。
 - 代码证据：没有发现 Dockerfile、进程管理器配置、反向代理配置、系统服务或部署工作流。
@@ -356,6 +432,30 @@
 - 2026-08-28 安全验证证据：API 重启后 `GET /api/catalog` 返回 5 个风格且 `prompt` 字段不暴露；`/api/health` 返回 `ok`。
 - 2026-08-28 CRUD 验证证据：`npm run db:migrate` 成功补齐字段；owner 账号完成风格创建、查询、编辑和停用；停用风格不再出现在 `/api/catalog`；`npm run lint`、`npm test` 和 `npm run build` 通过。
 - 2026-08-28 最终验证证据：`npm run lint` 通过；`npm test` 的 5 个测试文件、16 个测试全部通过；`npm run build` 通过；API 运行中且 `/api/health` 返回 `ok`。
+- 2026-09-06 会话持久化补充：启用 MySQL 时后台登录会话改为写入 `admin_sessions`，鉴权从数据库校验有效期和账号状态，并在登出时删除会话；无数据库开发模式继续使用内存回退。这样 API 重启或多实例部署不会因进程内 `Map` 丢失已登录会话。CSRF 请求校验和真实 MySQL 多实例联调仍待完成，状态保持 `处理中`。
+- 2026-09-06 验证证据：`npm run lint`、`npm test`（12 个测试文件、44 个测试）和 `npm run build` 全部通过；当前环境未提供可用 MySQL，未完成真实会话写入及跨进程联调。
+- 2026-09-06 CSRF 补充：后台所有写请求现在由 `guard` 校验会话对应的 `X-CSRF-Token`，前端统一从 `admin_csrf` Cookie 注入请求头；显式 `X-Admin-Token` 的 bootstrap 请求保持兼容。真实跨站浏览器验证和 MySQL 联调仍待完成，状态保持 `处理中`。
+- 2026-09-06 验证证据：`npm run lint`、`npm test`（12 个测试文件、44 个测试）和 `npm run build` 全部通过。
+- 2026-09-06 CSRF 回归测试：新增 `server/routes/admin.test.ts`，验证后台登录后缺少 CSRF token 的登出请求返回 403，携带正确 token 可成功登出。完整测试现为 13 个文件、45 个测试，状态保持 `处理中`，数据库会话分支仍待真实 MySQL 联调。
+- 2026-09-06 生产会话边界修复：启用 MySQL 时，bootstrap 密码不再创建内存后台会话；网页登录必须匹配启用的 `admin_users` 账号，直接 API 运维调用仍可使用 `X-Admin-Token`。新增回归测试覆盖该拒绝路径，完整测试现为 13 个文件、46 个测试。
+- 2026-09-06 Cookie 安全补充：生产环境后台 `admin_session` 和 `admin_csrf` Cookie 增加 `Secure` 属性，开发环境保留 HTTP 本地调试兼容；新增生产/开发属性回归测试，完整测试现为 13 个文件、48 个测试。
+- 2026-09-09 Python 迁移处理记录：Python 管理后台收窄为管理员账号密码登录、会话 Cookie 鉴权、兑换码批量生成和兑换状态查看；删除旧后台中的订单、支付、价格、退款和小程序领取说明。账号密码只从 `admin_users` 读取，`ADMIN_TOKEN` 不参与网页登录；新数据库可使用 `python -m backend.app.admin_cli create-user` 初始化管理员账号。`X-Admin-Token` 仅保留为服务器内部运维兼容方式，兑换码仅由后台生成。
+- 2026-09-09 验证证据：Python 兑换码 API 已有生成、查询、单次兑换测试；前端 `npm run lint`、`npm test`（17 个文件、62 个测试）和 `npm run build` 通过，问题仍保持 `处理中`，待管理员背景/风格管理迁移完成。
+- 2026-09-10 Python 管理台迁移记录：恢复概览、体验权益、生图任务、风格版本、Agent 背景、兑换码、系统监控和审计日志模块；新增 FastAPI 管理接口、数据库角色权限、素材上传/分析/发布与审计写入；删除支付、订单、退款、价格和小程序 token 导航。经典生图现在优先使用 MySQL 已发布风格版本，空库时才回退测试默认风格。
+- 2026-09-10 验证证据：`python -m pytest backend/tests` 29 项通过，`npm run lint` 和 `npm run build` 通过；本机 API 重启后 `GET /api/health`、数据库账号 `owner` 登录、`/api/admin/summary`、`/api/admin/generations`、`/api/admin/backgrounds` 均返回 200，概览明确返回 `database: mysql`。浏览器自动化未执行，原因是当前机器未安装 Chrome。
+- 2026-09-10 目录数据补齐：新增 Python Alembic `003_seed_default_styles`，将 5 个默认风格的名称、提示词、色板、模式和预览数据幂等写入远程 MySQL 的 `style_versions`；已有同一 `style_id/version` 时跳过，不覆盖管理员内容。背景不使用 TS/Python 内置占位图，仍由后台上传真实栅格图片、完成视觉理解后发布。
+- 2026-09-10 验证证据：新增目录种子幂等测试；执行 `python -m alembic -c backend/alembic.ini upgrade head` 后应检查 `style_versions` 为 5 条初始记录，并通过 `/api/admin/styles` 与 `/api/catalog` 验证管理端和游客端读取同一 MySQL 数据。
+- 2026-09-10 Python 接口差异审计：补齐游客端已使用的 `POST /api/events`，仅接受固定白名单事件和有界的简单元数据；日志会过滤照片、图片 URL、令牌、密钥和提示词等字段，不持久化客户端上报。
+- 2026-09-10 Python 遗留模块迁移处理中：新增 FastAPI 进程内限流、URL 解析/脱敏、健康检查延迟与存储空间详情、后台维护循环（过期/孤立资产、分享、管理员会话和超时任务恢复），并新增 `admin_cli import-legacy` 仅导入可安全映射的非支付记录；旧订单、支付、退款和小程序 token 明确统计为跳过。待完成生产 MySQL 导入演练和运行态限流/维护观测，状态保持 `处理中`。
+- 2026-09-10 迁移边界补齐：新增 `backend/app/jobs/generation_queue.py` 对应旧 `server/jobs/generationQueue.ts` 的排队、领取、完成、失败和超时恢复职责；新增 `backend/app/domain/share_service.py` 对应旧 `server/share/shareStore.ts` 的分享记录、资产归属校验和过期处理职责，分享 API 改为通过领域服务访问。移除 Python 运行时对旧 `/api/redeem-codes/claim` 兼容路由的注册，使该外部领取接口按真实不存在处理。`python -m pytest backend/tests -q` 38 项通过，`npm run lint` 通过；Node 构建和前端测试待本批提交前完成。
+- 2026-09-10 旧 Node 模块清理：确认旧 `server/` 目录中的业务、Provider、路由、支付、分享、队列和测试均已有 Python 对等实现或属于废弃支付运行时；删除旧 Node API 与服务端 TypeScript 编译配置，保留 `server/db/sql/` 仅作历史 SQL 参考。`npm run start` 改为启动 Python API，Vite/Vitest 仅保留前端开发和测试职责。
+- 2026-09-10 解决记录与验证证据：旧 Node API 清理完成，相关迁移提交包含本条记录更新。`python -m pytest backend/tests -q`（38 项）、`npm test`（14 项）、`npm run lint`、`npm run build`、`git diff --check` 和 `npx playwright test e2e/kiosk-flow.spec.ts`（6/6）全部通过；`npm run start` 已实际启动 Uvicorn，`/api/health`、`/api/catalog`、`/`、`/admin/` 运行态验证通过，已移除的支付、订单、价格、小程序 token 和旧兑换接口均返回 404。
+- 2026-09-10 遗留模块迁移收尾：补齐持久化生图队列的按任务领取、失败重试、后台 worker 消费和服务停止回收；生成任务与 `generation_styles` 状态保持同步，服务重启后可从 source 资产和数据库元数据恢复任务。`admin_cli import-legacy` 现在可幂等导入可安全关联的兑换权益、生图任务、风格明细、资产和分享链路，无法可靠关联的支付订单继续统计并跳过。上游图片 URL 下载改为流式大小限制、DNS 私网地址拦截和实际图片格式校验。
+- 2026-09-10 验证证据：`python -m pytest backend/tests -q`（44 项）、`npm test`（14 项）、`npm run lint`、`npm run build`、`git diff --check` 和 `npx playwright test e2e/kiosk-flow.spec.ts`（6/6）全部通过；`npm run start` 实际启动 Uvicorn 后，`/api/health` 返回 `ok: true`、`/api/catalog` 正常、`/` 与 `/admin/` 返回 200，支付/订单/旧兑换接口返回 404。当前问题仍保持 `处理中`，待生产 MySQL 遗留数据导入演练、真实 provider 和维护/限流监测完成后再评估关闭。
+- 2026-09-10 数据库运行边界修正：本机开发和生产运行均强制使用远程 MySQL；`MYSQL_ENABLED=false` 或运行时 `DATABASE_URL` 指向 SQLite 会在配置加载阶段直接拒绝。`aiosqlite` 已移出生产依赖，仅保留给显式 `APP_ENV=test` 的自动化测试夹具；本机 `localhost:5173` 测试不会改变数据库类型。
+- 2026-09-10 迁移缺口补齐：分享页恢复旧 Node 实现中的品牌明信片下载能力，并新增 Python `/api/shares/assets/pixel-leap-logo.webp` 资源路由；Alembic 初始迁移改为显式创建当前 Python 运行时 schema，不再通过 `Base.metadata.create_all()` 隐式建表，也不创建支付、订单、退款、价格或小程序 token 表。
+- 2026-09-10 导入与运维可靠性补强：`import-legacy` 增加 UUID、哈希、会话、状态、版本、图片路径和同批重复记录校验；日志按保留期裁剪并限制异常/字符串字段长度；维护任务清理过期源/输出资产与无数据库记录的遗留文件；配置补齐即梦尺寸、轮询和日志级别边界校验。
+- 2026-09-10 验证证据：`python -m pytest backend/tests -q`（48 项）、`npm test`（16 项）、`npm run lint`、`npm run build`、`git diff --check` 和 `npx playwright test e2e/kiosk-flow.spec.ts`（6/6）全部通过。迁移测试确认新库包含当前 Python schema、`shares.session_id` 为非空且存在索引/外键，并确认不创建支付专用表。生产 MySQL 导入演练、真实 provider 和维护/限流长期监测仍未完成，问题继续保持 `处理中`。
 - 2026-08-28 图片与交互完善记录：风格预览图支持 JPG/PNG/WebP 上传（单文件 5 MB，校验真实文件头），图片保存为 `data/assets/style/<uuid>.<ext>`，数据库仅保存相对路径；后台风格新增/编辑改为弹窗，列表显示缩略图，上传后可即时预览。发布风格后游客 `/api/catalog` 返回受控图片 URL，禁止暴露磁盘路径。
 - 2026-08-28 图片联调验证证据：重启 API 后 `/api/health` 返回 `ok`（MySQL `aiaimage`、存储、队列均为 `ok`）；使用 owner token 上传 PNG 返回 `201`、`style/<uuid>.png` 和 `/api/catalog/style-assets/<uuid>`；创建并发布临时风格后 `/api/catalog` 返回该图片 URL，访问返回 `200 image/png`，临时风格随后已停用归档；`npm run lint`、`npm test`（5 个文件、16 个测试）和 `npm run build` 均通过。
 - 2026-08-28 表单交互记录：新建/编辑风格弹窗明确标识必填字段（风格 ID、名称、模式、色板、提示词）与可选字段，保留后端对必填值的校验；`npm run lint`、`npm test`（5 个文件、16 个测试）和 `npm run build` 均通过。

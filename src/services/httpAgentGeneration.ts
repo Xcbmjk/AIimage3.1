@@ -1,15 +1,17 @@
-import type { GeneratedAsset, GenerationJob } from '../types'
+import type { GeneratedAsset, GenerationFailure, GenerationJob } from '../types'
 import type { AgentGenerationService } from './contracts'
 import { trackClientEvent } from './clientLogger'
+import { apiUrl } from './apiBase'
+import { photoToFile } from './photoFile'
 
-type ApiError = { code?: string; message?: string; retryable?: boolean }
+type ApiError = { code?: string; message?: string; retryable?: boolean; assets?: GeneratedAsset[]; prompt?: string; failures?: GenerationFailure[] }
 
 export const httpAgentGenerationService: AgentGenerationService = {
-  async generate(sessionId, paymentToken, generationId, photo, background, onProgress) {
+  async generate(sessionId, entitlementToken, generationId, photo, background, onProgress) {
     const controller = new AbortController()
     const startedAt = performance.now()
     trackClientEvent('agent.started', sessionId, { backgroundId: background.id, photoSource: photo.source })
-    const timeout = window.setTimeout(() => controller.abort(), 300_000)
+    const timeout = window.setTimeout(() => controller.abort(), 660_000)
     const jobs: GenerationJob[] = [{ id: `agent-job-${generationId}`, styleId: background.id, status: 'queued', progress: 0 }]
     onProgress(jobs)
     const ticker = window.setInterval(() => {
@@ -23,18 +25,29 @@ export const httpAgentGenerationService: AgentGenerationService = {
     }, 1000)
 
     try {
-      const response = await fetch('/api/agent/generation', {
+      const form = new FormData()
+      form.set('sessionId', sessionId)
+      form.set('generationId', generationId)
+      form.set('backgroundId', background.id)
+      form.set('photo', await photoToFile(photo))
+      const response = await fetch(apiUrl('/api/agent/generation'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Payment-Token': paymentToken },
-        body: JSON.stringify({ sessionId, generationId, photo: photo.url, backgroundId: background.id }),
+        headers: { 'X-Entitlement-Token': entitlementToken },
+        body: form,
         signal: controller.signal,
       })
-      const payload = (await response.json()) as ApiError & { assets?: GeneratedAsset[]; prompt?: string }
-      if (!response.ok || !payload.assets) throw new Error(payload.message ?? 'Agent 生图服务暂时不可用，请稍后重试')
+      const body = await response.text()
+      let payload: ApiError = {}
+      try { payload = JSON.parse(body) as ApiError } catch { /* handled below */ }
+      if (!payload.message && !response.ok) payload.message = `Agent 生图服务返回 HTTP ${response.status}`
+      const assets = Array.isArray(payload.assets) ? payload.assets : []
+      // Agent composes a single image, so there is no partial-success case:
+      // no image means the request failed.
+      if (!response.ok || !assets.length) throw new Error(payload.message ?? 'Agent 生图服务暂时不可用，请稍后重试')
       const prompt = typeof payload.prompt === 'string' ? payload.prompt : ''
       onProgress(jobs.map((job) => ({ ...job, status: 'complete', progress: 100 })))
       trackClientEvent('agent.succeeded', sessionId, { backgroundId: background.id, durationMs: Math.round(performance.now() - startedAt) })
-      return { assets: payload.assets, prompt }
+      return { assets, prompt }
     } catch (error) {
       const message = error instanceof DOMException && error.name === 'AbortError' ? 'Agent 生图等待超时，请检查服务配置后重试' : error instanceof Error ? error.message : 'Agent 生图失败'
       trackClientEvent('agent.failed', sessionId, { backgroundId: background.id, errorName: error instanceof Error ? error.name : 'unknown', durationMs: Math.round(performance.now() - startedAt) })

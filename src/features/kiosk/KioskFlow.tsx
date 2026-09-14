@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowRight, Bot, Camera, Check, ChevronLeft, Clock3, FileText, Leaf, Maximize2, RefreshCw, ScanLine, ShieldCheck, Sparkles, Upload, Wand2, WalletCards } from 'lucide-react'
+import { AlertCircle, ArrowRight, Bot, Camera, Check, ChevronLeft, Clock3, FileText, KeyRound, Maximize2, RefreshCw, ScanLine, ShieldCheck, Sparkles, Upload, Wand2 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { brand } from '../../config/brand'
 import { productConfig } from '../../config/product'
 import { demoPhoto, stylePresets } from '../../mocks/fixtures/styles'
-import { scenePresets } from '../../mocks/fixtures/scenes'
 import { services } from '../../services'
 import { createUuid } from '../../lib/uuid'
 import type { BackgroundPreset, StylePreset } from '../../types'
@@ -61,103 +60,61 @@ function WelcomePage() {
   return (
     <main className="screen welcome-screen">
       <ScenicBackdrop />
-      <div className="welcome-top"><BrandMark light /><div className="venue-chip"><Leaf size={20} /> {brand.scenicArea}</div></div>
+      <div className="welcome-top"><BrandMark light /></div>
       <section className="welcome-copy">
         <span className="eyebrow">AI SCENIC PORTRAIT EXPERIENCE</span>
         <h1><em>山水入梦</em><br />此刻入画</h1>
         <p>{brand.welcomeCopy}</p>
       </section>
       <section className="welcome-action">
-        <button className="primary-cta primary-cta--light" onClick={() => dispatch({ type: 'GO', stage: 'payment' })}>
-          <span><Sparkles size={30} /> 开启 AI 旅拍</span><small>微信扫码支付 · 约 3 分钟完成</small>
+        <button className="primary-cta primary-cta--light" onClick={() => dispatch({ type: 'GO', stage: 'redeem' })}>
+          <span><KeyRound size={30} /> 输入兑换码开始</span><small>兑换成功后即可拍摄并生成作品</small>
         </button>
+        <p className="redeem-note redeem-note--welcome">仅限后台生成的兑换码，每个兑换码只能使用一次</p>
         <div className="trust-row"><span><ShieldCheck /> 隐私保护</span><span><Clock3 /> 即拍即取</span><span><ScanLine /> 微信扫码保存</span></div>
       </section>
-      <footer className="welcome-footer">{brand.tagline}<span>体验编号 · SJ 2026</span></footer>
+      <footer className="welcome-footer">{brand.tagline}<span>体验编号 · HX 2026</span></footer>
     </main>
   )
 }
 
-function PaymentPage() {
+function RedeemPage() {
   const { state, dispatch } = useSession()
-  const creatingRef = useRef(false)
-  const [remaining, setRemaining] = useState(0)
-  const [checking, setChecking] = useState(false)
+  const [code, setCode] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
 
-  useEffect(() => {
-    if (state.paymentOrder || creatingRef.current) return
-    creatingRef.current = true
-    void services.payment.create(state.id).then((order) => {
-      dispatch({ type: 'PAYMENT_CREATED', order })
-    }).catch((error) => {
-      creatingRef.current = false
-      dispatch({ type: 'ERROR', message: error instanceof Error ? error.message : '支付服务暂时不可用' })
-    })
-  }, [dispatch, state.id, state.paymentOrder])
-
-  useEffect(() => {
-    const order = state.paymentOrder
-    if (!order) return
-    const updateRemaining = () => setRemaining(Math.max(0, Math.ceil((new Date(order.expiresAt).getTime() - Date.now()) / 1000)))
-    updateRemaining()
-    const timer = window.setInterval(updateRemaining, 1000)
-    return () => window.clearInterval(timer)
-  }, [state.paymentOrder])
-
-  useEffect(() => {
-    const order = state.paymentOrder
-    if (!order) return
-    let active = true
-    const check = async () => {
-      try {
-        const result = await services.payment.status(order.orderId, state.id)
-        if (active && result.status === 'paid' && result.accessToken) dispatch({ type: 'PAYMENT_CONFIRMED', token: result.accessToken })
-        if (active && result.status === 'expired') dispatch({ type: 'ERROR', message: '支付二维码已过期，请返回后重新发起体验' })
-      } catch {
-        // A transient polling failure should not invalidate an active payment QR code.
-      }
-    }
-    void check()
-    const timer = window.setInterval(() => void check(), 1500)
-    return () => {
-      active = false
-      window.clearInterval(timer)
-    }
-  }, [dispatch, state.id, state.paymentOrder])
-
-  const completeMockPayment = async () => {
-    if (!state.paymentOrder) return
-    setChecking(true)
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const normalized = code.trim()
+    if (!normalized) { setError('请输入兑换码'); return }
+    setSubmitting(true)
+    setError('')
     try {
-      await fetch(`/api/payments/mock/${encodeURIComponent(state.paymentOrder.orderId)}`)
-      const result = await services.payment.status(state.paymentOrder.orderId, state.id)
-      if (result.accessToken) dispatch({ type: 'PAYMENT_CONFIRMED', token: result.accessToken })
+      const result = await services.entitlement.consume(normalized, state.id)
+      dispatch({ type: 'REDEEMED', entitlement: result.entitlement, token: result.accessToken })
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : '兑换失败，请检查兑换码后重试')
     } finally {
-      setChecking(false)
+      setSubmitting(false)
     }
   }
 
-  const amount = ((state.paymentOrder?.amountFen ?? 990) / 100).toFixed(2)
-  const minutes = Math.floor(remaining / 60).toString().padStart(2, '0')
-  const seconds = (remaining % 60).toString().padStart(2, '0')
-
   return (
-    <main className="screen payment-screen">
-      <ScenicBackdrop />
-      <div className="payment-top"><button className="icon-button icon-button--dark" onClick={() => dispatch({ type: 'RESET' })}><ChevronLeft /></button><BrandMark light /><span className="step-pill">01 / 05</span></div>
-      <section className="payment-heading"><span className="eyebrow">UNLOCK YOUR PORTRAIT</span><h1>扫码入画</h1><p>支付完成后，镜头将自动为你开启</p></section>
-      <section className="payment-ticket">
-        <div className="payment-ticket__header"><span><WalletCards /> 微信支付</span><b><small>¥</small>{amount}</b></div>
-        <div className="payment-qr">
-          {state.paymentOrder ? <QRCodeSVG value={state.paymentOrder.codeUrl} size={322} fgColor="#112e29" bgColor="#fffdf8" level="M" /> : <div className="payment-loading"><RefreshCw /><span>正在创建支付订单</span></div>}
-          <i className="payment-scan-line" />
-        </div>
-        <h2>请使用微信扫一扫</h2>
-        <p className="payment-status"><span /> 等待支付结果 · {minutes}:{seconds}</p>
-        {state.error && <div className="payment-error">{state.error}</div>}
-        {state.paymentOrder?.mock && <button className="mock-payment-button" disabled={checking} onClick={() => void completeMockPayment()}>{checking ? '正在确认…' : '开发模式：模拟完成支付'}</button>}
+    <main className="screen paper-screen redeem-screen">
+      <StepHeader step="01 / 05" title="兑换体验" back={() => dispatch({ type: 'GO', stage: 'welcome' })} />
+      <section className="redeem-panel">
+        <span className="eyebrow eyebrow--dark">UNLOCK YOUR EXPERIENCE</span>
+        <h1>输入兑换码</h1>
+        <p>兑换成功后即可拍摄并生成山水肖像。</p>
+        <form onSubmit={(event) => void submit(event)}>
+          <label htmlFor="redeem-code">兑换码</label>
+          <input id="redeem-code" value={code} onChange={(event) => setCode(event.target.value)} placeholder="请输入兑换码" autoFocus autoComplete="off" spellCheck={false} aria-invalid={Boolean(error)} />
+          {error && <div className="redeem-error" role="alert">{error}</div>}
+          <button className="primary-cta redeem-submit" type="submit" disabled={submitting}>{submitting ? <><RefreshCw className="spin" /> 正在验证</> : <><KeyRound /> 兑换并开始</>}</button>
+        </form>
+        <small className="redeem-note">每个兑换码仅限使用一次，请妥善保管。</small>
       </section>
-      <div className="payment-assurance"><span><ShieldCheck /> 微信官方安全支付</span><span>支付后可拍摄并生成最多 2 张作品</span></div>
     </main>
   )
 }
@@ -218,7 +175,7 @@ function CameraPage() {
   return (
     <main className="screen camera-screen">
       <div className="camera-top"><button className="icon-button icon-button--dark" onClick={() => dispatch({ type: 'GO', stage: 'welcome' })}><ChevronLeft /></button><BrandMark light /><span className="step-pill">02 / 05</span></div>
-      <section className="camera-intro"><span className="eyebrow">LOOK INTO THE LENS</span><h1>请看向镜头</h1><p>支付已完成 · 现在可以开始拍摄</p></section>
+      <section className="camera-intro"><span className="eyebrow">LOOK INTO THE LENS</span><h1>请看向镜头</h1><p>兑换成功 · 现在可以开始拍摄</p></section>
       <div className="viewfinder">
         <video ref={videoRef} muted playsInline />
         {status !== 'ready' && <img src={demoPhoto} alt="演示取景画面" />}
@@ -287,16 +244,15 @@ function StylesPage({ styles }: { styles: StylePreset[] }) {
   const { state, dispatch } = useSession()
   const maxStyles = state.entitlement?.maxStyles ?? productConfig.maxStylesDefault
   const generatingRef = useRef(false)
-  const selectedScene = scenePresets.find((scene) => scene.id === state.selectedSceneId) ?? scenePresets.find((scene) => scene.id === 'portrait-only')!
 
   const generate = () => {
     if (generatingRef.current || !state.photo || !state.selectedStyleIds.length) return
     generatingRef.current = true
     const selectedStyles = styles.filter((style) => state.selectedStyleIds.includes(style.id))
-    if (!state.paymentToken) return
+    if (!state.entitlementToken) return
     const generationId = state.generationId ?? createUuid()
     dispatch({ type: 'GENERATION_STARTED', generationId })
-    void services.generation.generate(state.id, state.paymentToken, generationId, state.photo, selectedScene, selectedStyles, (jobs) => dispatch({ type: 'JOBS_UPDATED', jobs })).then((assets) => {
+    void services.generation.generate(state.id, state.entitlementToken, generationId, state.photo, selectedStyles, (jobs) => dispatch({ type: 'JOBS_UPDATED', jobs })).then((assets) => {
       dispatch({ type: 'GENERATED', assets })
     }).catch((generationError) => {
       const message = generationError instanceof Error ? generationError.message : '生成失败'
@@ -320,12 +276,12 @@ function AgentBackgroundsPage({ backgrounds }: { backgrounds: BackgroundPreset[]
   const selectedBackground = backgrounds.find((background) => background.id === state.selectedBackgroundId)
 
   const generate = () => {
-    if (generatingRef.current || !state.photo || !state.selectedBackgroundId || !state.paymentToken) return
+    if (generatingRef.current || !state.photo || !state.selectedBackgroundId || !state.entitlementToken) return
     if (!selectedBackground) return
     generatingRef.current = true
     const generationId = state.generationId ?? createUuid()
     dispatch({ type: 'GENERATION_STARTED', generationId })
-    void services.agent.generate(state.id, state.paymentToken, generationId, state.photo, selectedBackground, (jobs) => dispatch({ type: 'JOBS_UPDATED', jobs })).then((result) => {
+    void services.agent.generate(state.id, state.entitlementToken, generationId, state.photo, selectedBackground, (jobs) => dispatch({ type: 'JOBS_UPDATED', jobs })).then((result) => {
       dispatch({ type: 'AGENT_GENERATED', assets: result.assets, prompt: result.prompt })
     }).catch((generationError) => {
       generatingRef.current = false
@@ -364,7 +320,7 @@ function GeneratingPage({ styles, backgrounds }: { styles: StylePreset[]; backgr
       <div className="generating-brand"><BrandMark light /><span>04 / 05</span></div>
       <section className="generating-copy"><span className="eyebrow">{isAgent ? 'AGENT IS THINKING' : 'AI IS PAINTING'}</span><h1>{isAgent ? <>AI 正在理解<br />动作并落笔</> : <>山河正在<br />为你落笔</>}</h1><p>{isAgent ? '视觉模型正在分析背景动作并实时生成融合提示词，请稍候' : 'AI 正在理解光影与神态，请稍候片刻'}</p><strong className="generation-time-hint"><Clock3 /> 生图预计需要 30-90 秒</strong></section>
       <div className="progress-orbit"><div className="orbit-ring" style={{ '--progress': `${overall * 3.6}deg` } as React.CSSProperties}><div><b>{overall}</b><span>%</span></div></div><Sparkles className="orbit-star" /></div>
-      <div className="job-list">{steps.map((step) => { const job = state.jobs.find((item) => item.styleId === step.id); return <div className="job-row" key={step.id}><span className="job-icon">{step.motif}</span><div><b>{step.name}</b><small>{job?.status === 'complete' ? '作品已完成' : job?.status === 'working' ? (isAgent ? '正在合成人物与背景' : '正在渲染光影与细节') : isAgent ? '正在分析动作' : '等待落笔'}</small></div><div className="mini-progress"><i style={{ width: `${job?.progress ?? 0}%` }} /></div>{job?.status === 'complete' ? <Check /> : <span>{job?.progress ?? 0}%</span>}</div> })}</div>
+      <div className="job-list">{steps.map((step) => { const job = state.jobs.find((item) => item.styleId === step.id); return <div className="job-row" key={step.id}><span className="job-icon">{step.motif}</span><div><b>{step.name}</b><small>{job?.status === 'complete' ? '作品已完成' : job?.status === 'failed' ? '这次没有画完' : job?.status === 'working' ? (isAgent ? '正在合成人物与背景' : '正在渲染光影与细节') : isAgent ? '正在分析动作' : '等待落笔'}</small></div><div className="mini-progress"><i style={{ width: `${job?.progress ?? 0}%` }} /></div>{job?.status === 'complete' ? <Check /> : job?.status === 'failed' ? <AlertCircle /> : <span>{job?.progress ?? 0}%</span>}</div> })}</div>
       {state.error && <div className="generation-error"><b>这次落笔没有完成</b><span>{state.error}</span><button className="secondary-cta" onClick={() => dispatch({ type: 'GO', stage: isAgent ? 'backgrounds' : 'styles' })}><RefreshCw /> 重试生成</button></div>}
       <p className="generation-note">请不要离开 · 完成后将自动展示作品</p>
     </main>
@@ -375,18 +331,46 @@ function ResultsPage({ styles, backgrounds }: { styles: StylePreset[]; backgroun
   const { state, dispatch } = useSession()
   const [activeIndex, setActiveIndex] = useState(0)
   const [sharing, setSharing] = useState(false)
+  const [retrying, setRetrying] = useState(false)
   const isAgent = state.generationMode === 'agent'
   const activeAsset = state.assets[activeIndex]
   const activeStyle = styles.find((style) => style.id === activeAsset?.styleId)
   const activeBackground = backgrounds.find((background) => background.id === activeAsset?.styleId)
   const captionName = isAgent ? (activeBackground?.name ?? 'Agent 作品') : activeStyle?.name
   const captionSubtitle = isAgent ? (activeBackground?.subtitle ?? '智能合成') : activeStyle?.subtitle
+  const failedStyles = useMemo(
+    () => styles.filter((style) => state.failedStyleIds.includes(style.id)),
+    [styles, state.failedStyleIds],
+  )
+
+  const retryFailed = async () => {
+    if (retrying || !state.entitlementToken || !state.photo || !state.generationId || !failedStyles.length) return
+    setRetrying(true)
+    try {
+      // Same generation id on purpose: the allowance was already spent by the
+      // images that landed, so recovering the missing ones must not consume a
+      // second entitlement.
+      const assets = await services.generation.generate(
+        state.id,
+        state.entitlementToken,
+        state.generationId,
+        state.photo,
+        failedStyles,
+        (jobs) => dispatch({ type: 'JOBS_UPDATED', jobs }),
+      )
+      dispatch({ type: 'SALVAGE_GENERATED', assets })
+    } catch (error) {
+      dispatch({ type: 'ERROR', message: error instanceof Error ? error.message : '重绘失败，请稍后再试' })
+    } finally {
+      setRetrying(false)
+    }
+  }
 
   const share = async () => {
-    if (!state.paymentToken || sharing) return
+    if (!state.entitlementToken || sharing) return
     setSharing(true)
     try {
-      const shareLink = await services.share.create(state.id, state.paymentToken, state.assets)
+      const shareLink = await services.share.create(state.id, state.entitlementToken, state.assets)
       dispatch({ type: 'SHARE_READY', shareLink })
     } catch (error) {
       dispatch({ type: 'ERROR', message: error instanceof Error ? error.message : '作品分享创建失败' })
@@ -398,13 +382,19 @@ function ResultsPage({ styles, backgrounds }: { styles: StylePreset[]; backgroun
     <main className="screen results-screen">
       <StepHeader step="05 / 05" title="你的山水作品" />
       <section className="results-intro"><span className="eyebrow eyebrow--dark">YOUR MOUNTAIN STORIES</span><h1>这一刻，已入画</h1><p>{isAgent ? 'Agent 已根据你的照片与所选背景完成合成' : '左右切换查看你的 AI 旅拍作品'}</p></section>
-      <div className="result-stage"><img src={activeAsset?.imageUrl} alt={captionName ?? '生成结果'} /><div className="result-stamp">山境<br />造像</div><button className="zoom-button"><Maximize2 /></button><div className="result-caption"><small>{captionSubtitle}</small><h3>{captionName}</h3></div></div>
+      <div className="result-stage"><img src={activeAsset?.imageUrl} alt={captionName ?? '生成结果'} /><div className="result-stamp">焕新<br />造像</div><button className="zoom-button"><Maximize2 /></button><div className="result-caption"><small>{captionSubtitle}</small><h3>{captionName}</h3></div></div>
       <div className="result-thumbs">{state.assets.map((asset, index) => { const style = isAgent ? backgrounds.find((item) => item.id === asset.styleId) : styles.find((item) => item.id === asset.styleId); return <button key={asset.id} className={index === activeIndex ? 'active' : ''} onClick={() => setActiveIndex(index)}><img src={asset.imageUrl} alt={style?.name} /><span>{style?.name}</span></button> })}</div>
       {isAgent && state.agentPrompt && (
         <details className="agent-prompt">
           <summary><FileText size={16} /> 查看本次动态生成的提示词（调试）</summary>
           <pre>{state.agentPrompt}</pre>
         </details>
+      )}
+      {failedStyles.length > 0 && (
+        <div className="results-partial">
+          <div><b>{failedStyles.length} 张这次没有画完</b><span>{failedStyles.map((style) => style.name).join('、')}</span></div>
+          <button className="secondary-cta" disabled={retrying} onClick={() => void retryFailed()}>{retrying ? <RefreshCw className="spin" /> : <RefreshCw />} {retrying ? '正在重绘' : `重试这 ${failedStyles.length} 张`}</button>
+        </div>
       )}
       {state.error && <div className="results-share-error">{state.error}</div>}
       <div className="results-actions"><button className="secondary-cta" onClick={() => dispatch({ type: 'RESET' })}><RefreshCw /> 再拍一次</button><button className="primary-cta" disabled={sharing} onClick={() => void share()}>{sharing ? <RefreshCw className="spin" /> : <ScanLine />} {sharing ? '正在准备作品' : '微信扫码保存'}</button></div>
@@ -432,16 +422,36 @@ function DownloadPage() {
 }
 
 export function KioskFlow() {
-  const { state } = useSession()
-  const [styles, setStyles] = useState<StylePreset[]>(stylePresets)
+  const { state, dispatch } = useSession()
+  const generationMode = import.meta.env.VITE_GENERATION_MODE ?? 'mock'
+  const [styles, setStyles] = useState<StylePreset[]>(
+    generationMode === 'api' ? [] : stylePresets,
+  )
   const [backgrounds, setBackgrounds] = useState<BackgroundPreset[]>([])
   useEffect(() => { void services.styles.list().then(setStyles) }, [])
   useEffect(() => { void services.backgrounds.list().then(setBackgrounds) }, [])
   const agentEnabled = backgrounds.length > 0
+  // 亭机无人值守：作品展示 / 下载页连续 120 秒没有任何触屏或按键操作，
+  // 自动回到首页，避免上一位游客扫码离开后，屏幕一直停留在他的结果页。
+  // 生成中的页面不参与（生成不能被打断），拍照页不参与（摆姿势不代表离开）。
+  useEffect(() => {
+    if (state.stage !== 'results' && state.stage !== 'download') return
+    const IDLE_RESET_MS = 120_000
+    let timer = window.setTimeout(() => dispatch({ type: 'RESET' }), IDLE_RESET_MS)
+    const rearm = () => {
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => dispatch({ type: 'RESET' }), IDLE_RESET_MS)
+    }
+    const events = ['pointerdown', 'touchstart', 'keydown'] as const
+    for (const event of events) window.addEventListener(event, rearm, { passive: true })
+    return () => {
+      window.clearTimeout(timer)
+      for (const event of events) window.removeEventListener(event, rearm)
+    }
+  }, [state.stage, dispatch])
   switch (state.stage) {
     case 'welcome': return <WelcomePage />
-    case 'payment': return <PaymentPage />
-    case 'redeem': return <CameraPage />
+    case 'redeem': return <RedeemPage />
     case 'camera': return <CameraPage />
     case 'review': return <ReviewPage />
     case 'mode': return <ModePage agentEnabled={agentEnabled} />

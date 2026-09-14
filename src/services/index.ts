@@ -5,15 +5,14 @@ import { mockBackgroundService } from '../mocks/services/generation'
 import { mockCameraService } from '../mocks/services/camera'
 import { mockEntitlementService } from '../mocks/services/entitlement'
 import { mockGenerationService } from '../mocks/services/generation'
-import { httpPaymentService } from './httpPayment'
 import { httpShareService } from './httpShare'
 import { httpBackgroundService, httpStyleService } from './httpCatalog'
+import { httpEntitlementService } from './httpEntitlement'
 
 const generationMode = import.meta.env.VITE_GENERATION_MODE ?? 'mock'
 
 export const services = {
-  entitlement: mockEntitlementService,
-  payment: httpPaymentService,
+  entitlement: generationMode === 'api' ? httpEntitlementService : mockEntitlementService,
   camera: mockCameraService,
   generation: generationMode === 'api' ? httpGenerationService : mockGenerationService,
   agent: generationMode === 'api' ? httpAgentGenerationService : mockAgentGenerationService,

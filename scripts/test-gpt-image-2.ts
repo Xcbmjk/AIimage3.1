@@ -1,7 +1,6 @@
 import dotenv from 'dotenv'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { endpointUrl } from '../server/lib/urls'
 
 dotenv.config({ path: path.resolve('.env.local') })
 dotenv.config()

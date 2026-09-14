@@ -3,11 +3,12 @@ import { test, expect, type Page } from '@playwright/test'
 /**
  * End-to-end test for the mountain portrait kiosk flow.
  *
- * Covers: welcome → camera (demo photo) → review → style selection →
+ * Covers: welcome → redeem → camera (demo photo) → review → style selection →
  * generation → results → QR/share → reset.
  *
  * The webServer config in playwright.config.ts starts:
- *   - Node API server with AI_PROVIDER=mock (overriding .env.local)
+ *   - Python API server with APP_ENV=test and no model_configs row, which is
+ *     what selects the mock provider (the vendor is never set from the env)
  *   - Vite dev server with /api proxy to 127.0.0.1:8787
  */
 
@@ -18,22 +19,18 @@ test.describe('山水 AI 旅拍 kiosk flow', () => {
   let consoleMessages: string[]
 
   test.beforeEach(async ({ page }) => {
-    let paid = false
-    await page.route('**/api/payments/orders', async (route) => {
-      await route.fulfill({ json: { orderId: 'SJ202608110001MOCK', amountFen: 990, expiresAt: new Date(Date.now() + 300_000).toISOString(), codeUrl: 'weixin://wxpay/mock', mock: true } })
-    })
-    await page.route('**/api/payments/mock/*', async (route) => {
-      paid = true
-      await route.fulfill({ contentType: 'text/html', body: '<h1>模拟支付成功</h1>' })
-    })
-    await page.route('**/api/payments/orders/*?sessionId=*', async (route) => {
-      await route.fulfill({ json: paid ? { status: 'paid', accessToken: 'e2e-paid-token' } : { status: 'pending' } })
+    await page.route('**/api/entitlements/redeem', async (route) => {
+      await route.fulfill({ json: {
+        accessToken: 'e2e-entitlement-token',
+        entitlement: { code: 'ABCD2345', status: 'used', maxStyles: 4, expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
+      } })
     })
     await page.route('**/api/generation', async (route) => {
-      const body = route.request().postDataJSON() as { photo: string; sceneId: string; styles: Array<{ id: string }> }
-      expect(body.sceneId).toBe('portrait-only')
+      const raw = route.request().postData() ?? ''
+      const stylesField = raw.match(/name="styles"\r\n\r\n([\s\S]*?)\r\n--/)
+      const styles = stylesField ? JSON.parse(stylesField[1]) as Array<{ id: string }> : [{ id: 'ink' }]
       await new Promise((resolve) => setTimeout(resolve, 200))
-      await route.fulfill({ json: { provider: 'mock', assets: body.styles.map((style, index) => ({ id: `e2e-${index}`, styleId: style.id, imageUrl: body.photo })) } })
+      await route.fulfill({ json: { provider: 'mock', assets: styles.map((style, index) => ({ id: `e2e-${index}`, assetId: `e2e-${index}`, styleId: style.id, imageUrl: bodyPhoto })) } })
     })
     await page.route('**/api/shares', async (route) => {
       await route.fulfill({ status: 201, json: { url: 'http://192.168.1.20:8787/api/shares/e2e-share', expiresAt: new Date(Date.now() + 86_400_000).toISOString() } })
@@ -42,16 +39,16 @@ test.describe('山水 AI 旅拍 kiosk flow', () => {
       await route.fulfill({ json: {
         styles: ['ink', 'gold', 'spring', 'night', 'van-gogh'].map((id) => ({ id, name: id, subtitle: 'sub', description: 'desc', palette: ['#111', '#222', '#333'], motif: 'M', resultImage: bodyPhoto, mode: 'artistic' })),
         backgrounds: [{ id: 'gate-steps', name: '门前石阶', subtitle: '坐姿', description: '坐姿背景', poseHint: '端坐', previewImage: bodyPhoto }, { id: 'ridge-walk', name: '山脊漫步', subtitle: '行走', description: '行走背景', poseHint: '行走', previewImage: bodyPhoto }],
-        pricing: { amountFen: 990, description: 'x' },
         product: { maxStyles: 4, shareExpiryHours: 24 },
-        runtime: { generationMode: 'api', paymentMode: 'mock', agentEnabled: true },
+        runtime: { generationMode: 'api', agentEnabled: true },
       } })
     })
     await page.route('**/api/agent/generation', async (route) => {
-      const body = route.request().postDataJSON() as { photo: string; backgroundId: string }
-      expect(body.backgroundId).toBeTruthy()
+      const raw = route.request().postData() ?? ''
+      const backgroundField = raw.match(/name="backgroundId"\r\n\r\n([^\r\n]+)/)
+      const backgroundId = backgroundField?.[1] ?? 'gate-steps'
       await new Promise((resolve) => setTimeout(resolve, 200))
-      await route.fulfill({ json: { provider: 'mock', prompt: '这是 Agent 动态生成的融合提示词，用于调试展示。', assets: [{ id: 'e2e-agent-0', styleId: body.backgroundId, imageUrl: body.photo }] } })
+      await route.fulfill({ json: { provider: 'mock', prompt: '这是 Agent 动态生成的融合提示词，用于调试展示。', assets: [{ id: 'e2e-agent-0', assetId: 'e2e-agent-0', styleId: backgroundId, imageUrl: bodyPhoto }] } })
     })
     consoleMessages = []
     page.on('console', (msg) => {
@@ -66,43 +63,88 @@ test.describe('山水 AI 旅拍 kiosk flow', () => {
     await page.reload()
   })
 
-  async function completeMockPayment(page: Page) {
-    await expect(page.locator('.payment-screen')).toBeVisible()
-    await expect(page.locator('.payment-qr svg')).toBeVisible()
-    await page.locator('.mock-payment-button').click()
+  async function completeRedeem(page: Page) {
+    await expect(page.locator('.redeem-screen')).toBeVisible()
+    await page.locator('#redeem-code').fill('ABCD2345')
+    await page.locator('.redeem-submit').click()
     await expect(page.locator('.camera-screen')).toBeVisible()
   }
 
   async function navigateToReview(page: Page) {
     await page.locator('.primary-cta--light').click()
-    await completeMockPayment(page)
+    await completeRedeem(page)
     await page.locator('.shutter', { hasText: '使用示例照片' }).click()
     await expect(page.locator('.paper-screen')).toBeVisible()
     await page.locator('.primary-cta', { hasText: '使用这张' }).click()
     await expect(page.locator('.mode-screen')).toBeVisible()
   }
 
-  // Helper: navigate through welcome → payment → camera → review → mode → classic styles
+  // Helper: navigate through welcome → redeem → camera → review → mode → classic styles
   async function navigateToStyles(page: Page) {
     await navigateToReview(page)
     await page.locator('.mode-card').first().click()
     await expect(page.locator('.styles-screen')).toBeVisible()
   }
 
+  async function expectInsideViewport(page: Page, selector: string) {
+    const viewport = page.viewportSize()
+    expect(viewport).not.toBeNull()
+    const boxes = await page.locator(selector).evaluateAll((elements) => elements.map((element) => {
+      const rect = element.getBoundingClientRect()
+      return { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left }
+    }))
+    for (const box of boxes) {
+      expect(box.left).toBeGreaterThanOrEqual(0)
+      expect(box.top).toBeGreaterThanOrEqual(0)
+      expect(box.right).toBeLessThanOrEqual(viewport!.width)
+      expect(box.bottom).toBeLessThanOrEqual(viewport!.height)
+    }
+  }
+
+  async function expectNoPageScroll(page: Page) {
+    const metrics = await page.evaluate(() => ({
+      bodyWidth: document.body.scrollWidth,
+      bodyHeight: document.body.scrollHeight,
+      rootWidth: document.documentElement.scrollWidth,
+      rootHeight: document.documentElement.scrollHeight,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    }))
+    expect(metrics.bodyWidth).toBeLessThanOrEqual(metrics.viewportWidth)
+    expect(metrics.bodyHeight).toBeLessThanOrEqual(metrics.viewportHeight)
+    expect(metrics.rootWidth).toBeLessThanOrEqual(metrics.viewportWidth)
+    expect(metrics.rootHeight).toBeLessThanOrEqual(metrics.viewportHeight)
+  }
+
+  test('fits portrait and landscape displays without page scrolling', async ({ page }) => {
+    for (const viewport of [{ width: 430, height: 932 }, { width: 1280, height: 720 }]) {
+      await page.setViewportSize(viewport)
+      await page.reload()
+      await expect(page.locator('.welcome-screen')).toBeVisible()
+      await expectNoPageScroll(page)
+      await expectInsideViewport(page, '.primary-cta--light')
+
+      await navigateToStyles(page)
+      await expectNoPageScroll(page)
+      await expectInsideViewport(page, '.style-card')
+      await expectInsideViewport(page, '.sticky-action')
+    }
+  })
+
   test('complete visitor journey: welcome → camera → review → styles → generation → results → QR → reset', async ({ page }) => {
 
     // ── Step 1: Welcome page ──────────────────────────────────────────────
     test.info().annotations.push({ type: 'step', description: 'Welcome' })
-    await expect(page).toHaveTitle(/山境造像/)
+    await expect(page).toHaveTitle(/焕新造像/)
     await expect(page.locator('.welcome-screen')).toBeVisible()
     await expect(page.locator('.primary-cta--light')).toBeVisible()
 
     // The welcome action button starts the kiosk
     await page.locator('.primary-cta--light').click()
 
-    // ── Step 2: WeChat payment gate ───────────────────────────────────────
-    test.info().annotations.push({ type: 'step', description: 'Mock WeChat payment' })
-    await completeMockPayment(page)
+    // ── Step 2: Redeem code gate ───────────────────────────────────────────
+    test.info().annotations.push({ type: 'step', description: 'Redeem code' })
+    await completeRedeem(page)
 
     // ── Step 3: Camera page (demo photo) ──────────────────────────────────
     test.info().annotations.push({ type: 'step', description: 'Camera (demo photo)' })
@@ -193,8 +235,8 @@ test.describe('山水 AI 旅拍 kiosk flow', () => {
     await expect(page.locator('.welcome-screen')).toBeVisible()
     await page.locator('.primary-cta--light').click()
 
-    // A new journey must require a new payment.
-    await expect(page.locator('.payment-screen')).toBeVisible()
+    // A new journey must require a new redeem code.
+    await expect(page.locator('.redeem-screen')).toBeVisible()
 
     // Log any console messages that might help debugging
     if (consoleMessages.length > 0) {

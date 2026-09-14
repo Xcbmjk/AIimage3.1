@@ -6,18 +6,10 @@ const entitlement = { code: 'SJ2026', status: 'used' as const, maxStyles: 4, exp
 
 describe('sessionReducer', () => {
   it('moves from redemption into camera', () => {
-    const state = sessionReducer(createInitialSession(), { type: 'REDEEMED', entitlement })
+    const state = sessionReducer(createInitialSession(), { type: 'REDEEMED', entitlement, token: 'redeem-token' })
     expect(state.stage).toBe('camera')
     expect(state.entitlement?.code).toBe('SJ2026')
-  })
-
-  it('unlocks the camera only after payment confirmation', () => {
-    const initial = createInitialSession()
-    const payment = sessionReducer(initial, { type: 'GO', stage: 'payment' })
-    const confirmed = sessionReducer(payment, { type: 'PAYMENT_CONFIRMED', token: 'paid-token' })
-    expect(payment.stage).toBe('payment')
-    expect(confirmed.stage).toBe('camera')
-    expect(confirmed.paymentToken).toBe('paid-token')
+    expect(state.entitlementToken).toBe('redeem-token')
   })
 
   it('keeps one generation id for the paid generation attempt', () => {
@@ -36,17 +28,9 @@ describe('sessionReducer', () => {
     expect(state.selectedStyleIds).toEqual(['ink', 'gold', 'spring', 'night'])
   })
 
-  it('stores one scene and clears styles when the scene changes', () => {
-    const selected = sessionReducer({ ...createInitialSession(), selectedStyleIds: ['ink'] }, { type: 'SELECT_SCENE', sceneId: 'great-wall' })
-    expect(selected.selectedSceneId).toBe('great-wall')
-    expect(selected.selectedStyleIds).toEqual([])
-    expect(selected.stage).toBe('styles')
-  })
-
-  it('routes classic mode into style selection with the default scene', () => {
+  it('routes classic mode into style selection', () => {
     const state = sessionReducer({ ...createInitialSession(), stage: 'mode' }, { type: 'SELECT_MODE', mode: 'classic' })
     expect(state.generationMode).toBe('classic')
-    expect(state.selectedSceneId).toBe('portrait-only')
     expect(state.stage).toBe('styles')
   })
 
@@ -71,9 +55,8 @@ describe('sessionReducer', () => {
     const state = sessionReducer(dirty, { type: 'RESET' })
     expect(state.stage).toBe('welcome')
     expect(state.entitlement).toBeNull()
-    expect(state.paymentToken).toBeNull()
+    expect(state.entitlementToken).toBeNull()
     expect(state.generationId).toBeNull()
-    expect(state.selectedSceneId).toBeNull()
     expect(state.selectedStyleIds).toEqual([])
     expect(state.generationMode).toBe('classic')
     expect(state.selectedBackgroundId).toBeNull()

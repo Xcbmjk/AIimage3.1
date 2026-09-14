@@ -37,7 +37,10 @@ export const mockEntitlementService: EntitlementService = {
     if (used[code]) throw new Error('该体验码已完成体验，不可重复使用')
     used[code] = sessionId
     localStorage.setItem(STORAGE_KEY, JSON.stringify(used))
-    return { ...entitlement, status: 'used', sessionId }
+    return {
+      entitlement: { ...entitlement, status: 'used', sessionId },
+      accessToken: `mock-redeem-${sessionId}-${code}`,
+    }
   },
   async restore(rawCode, sessionId) {
     const code = rawCode.trim().toUpperCase()

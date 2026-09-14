@@ -1,4 +1,9 @@
 node_modules
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+.workbuddy/
 .DS_Store
 dist
 dist-server/
@@ -18,3 +23,5 @@ secrets/
 scratch/
 *.log
 nul
+output/
+tmp/

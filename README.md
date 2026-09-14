@@ -1,170 +1,162 @@
-# 山境造像 · AI 旅拍一体机 Demo
+# 焕新造像 · AI 旅拍一体机
 
-面向 1080×1920 竖屏景区一体机的高保真应用。游客使用手机微信扫描大屏动态付款码，支付成功后通过设备摄像头拍照，选择最多两种 AI 风格，生成作品并扫码保存。
+这是一个运行在安卓一体机上的 AI 人像拍摄应用。前端继续使用 React/Vite 和 Capacitor，后端已迁移到 Python/FastAPI。
 
-## 运行
+完整的服务器部署、MySQL 初始化、后台账号、兑换码、systemd 和 Android APK 操作步骤见：
+[Python 后端部署与启动手册](docs/deployment-python.md)
 
-```bash
+当前产品流程：
+
+```text
+欢迎页 -> 输入兑换码 -> 拍照 -> 确认照片 -> 选择创作方式
+       -> 经典风格 / Agent 背景 -> 生图 -> 结果 -> 分享下载
+```
+
+项目不包含支付、订单、退款、价格和小程序领取兑换码功能。兑换码只能由管理员在后台批量生成，游客在一体机页面兑换；每个兑换码只能兑换一次，每个兑换权益只能完成一个生图任务。
+
+## 启动
+
+### Python 后端
+
+需要 Python 3.11 或更高版本：
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e "backend[dev]"
+python -m alembic -c backend/alembic.ini upgrade head
+python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8787
+```
+
+本机开发和生产运行都使用 MySQL，通过远程 `MYSQL_*` 配置连接；项目运行时禁止回退到 SQLite。后端默认只提供同源 API，不会把模型密钥下发到浏览器。
+
+### React 前端
+
+另开终端运行：
+
+```powershell
 npm install
-npm run dev
+npm run dev:web
 ```
 
-默认使用模拟支付。进入支付页后点击“开发模式：模拟完成支付”，即可解锁拍照流程。
+Vite 开发服务器默认运行在 `http://localhost:5173`，需要将 `/api` 代理到正在运行的 Python API。安卓 APK 使用 `VITE_API_BASE_URL` 访问公网 Python API；普通浏览器仍然使用同源 `/api`。
 
-## 微信支付接入
+生产前端构建：
 
-安卓大屏采用微信支付 API v3 的 Native 支付：服务端下单，大屏展示 `code_url` 动态二维码，游客用自己的手机微信付款。前端轮询本站订单状态；只有微信回调验签、解密并核对商户号、订单号、币种和 990 分金额后，服务端才签发本次体验的支付凭证。`/api/generation` 会再次校验该凭证，不能只修改前端页面绕过支付。
-
-尚未取得商户资料时，在 `.env.local` 使用：
-
-```dotenv
-PAYMENT_MODE=mock
-PAYMENT_AMOUNT_FEN=990
-PUBLIC_BASE_URL=http://127.0.0.1:8787
-```
-
-最后一步会把作品保存到 `data/shares/`，并生成 24 小时有效的手机作品页。局域网测试时，手机和一体机需连接同一 Wi-Fi，并使用电脑局域网地址打开前端（例如 `http://192.168.1.20:5173`）；服务会自动把分享二维码生成为该局域网地址。公网部署时，将 `PUBLIC_BASE_URL` 设置为可访问的 HTTPS 域名。
-
-真实接入前，需要准备：
-
-- 已开通 Native 支付权限的微信支付普通商户号。
-- 与商户号绑定的公众号、小程序或开放平台 `AppID`。
-- 商户 API 证书序列号和 `apiclient_key.pem` 私钥。
-- 32 字节 APIv3 密钥。
-- 微信支付公钥 ID 和公钥 PEM 文件；本项目按微信支付公钥模式验签。
-- 可从公网访问的 HTTPS 域名；微信回调地址将是 `PUBLIC_BASE_URL/api/payments/wechat/notify`。
-
-将密钥文件放到未纳入 Git 的 `secrets/`，然后配置：
-
-```dotenv
-PAYMENT_MODE=wechat-native
-PAYMENT_AMOUNT_FEN=990
-PAYMENT_DESCRIPTION=山境造像 AI 旅拍体验
-PUBLIC_BASE_URL=https://kiosk.example.com
-WECHAT_PAY_APP_ID=wx...
-WECHAT_PAY_MCH_ID=190...
-WECHAT_PAY_CERT_SERIAL=...
-WECHAT_PAY_PRIVATE_KEY_PATH=secrets/apiclient_key.pem
-WECHAT_PAY_API_V3_KEY=32字节APIv3密钥
-WECHAT_PAY_PUBLIC_KEY_ID=PUB_KEY_ID_...
-WECHAT_PAY_PUBLIC_KEY_PATH=secrets/wechatpay_public_key.pem
-```
-
-启用 `MYSQL_ENABLED=true` 时，订单、支付凭证和生图权益使用 MySQL 持久化，并通过商户订单号、微信交易号和生图任务唯一约束保证幂等。未启用 MySQL 时，开发环境仍可回退到 `data/payment-orders.json`；生产环境应启用 MySQL。私钥、APIv3 密钥、支付公钥文件不能放入 APK、Vite 环境变量或 Git。
-
-## 本地 Docker MySQL
-
-仓库提供 MySQL 5.7 Compose 配置，默认仅监听 `127.0.0.1:3307`。先创建本地密码文件：
-
-```bash
-copy .env.docker.example .env.docker.local
-```
-
-修改 `.env.docker.local` 中的两个密码后启动数据库：
-
-```bash
-docker compose --env-file .env.docker.local up -d mysql
-npm run db:migrate
-npm run db:import-json
-```
-
-应用侧 `.env.local` 使用 `MYSQL_HOST=127.0.0.1`、`MYSQL_PORT=3307`、`MYSQL_DATABASE=aiaimage`，账号密码与 `.env.docker.local` 保持一致。Docker 数据保存在命名卷 `aiimage_mysql_data`。
-
-需要由数据库管理员手工执行 SQL 时，请按
-[server/db/sql/README.md](server/db/sql/README.md) 的顺序运行完整 Schema、增量升级和目录初始化脚本。
-
-## 质量检查
-
-```bash
+```powershell
 npm run lint
 npm test
 npm run build
 ```
 
-## 真实 AI 生图配置
+如果将 `STATIC_DIRECTORY=dist` 配置给 Python 后端，FastAPI 会同时托管构建后的游客页面和 `/admin/` 管理页面。
 
-当前真实 provider 的配置不在前端页面中，而在 Node 服务端环境变量中。浏览器始终请求本站 `/api/generation`，API Key 不会进入 Vite bundle。
+## 管理后台
 
-```bash
-copy .env.example .env.local
+打开 `http://localhost:8787/admin/` 或 Vite 开发服务器的 `/admin/`，使用管理员账号和密码登录。
+
+账号和密码只从数据库 `admin_users` 表校验，不会使用 `ADMIN_TOKEN` 作为网页登录密码。迁移前数据库已有管理员账号时，直接使用原账号密码；新数据库可先执行：
+
+```powershell
+python -m backend.app.admin_cli create-user --username owner --role owner
 ```
 
-在 `.env.local` 中选择一种模式：
+后台目前提供：
+
+- 批量生成兑换码
+- 设置兑换码过期时间
+- 查看兑换码状态、兑换会话和时间
+- 复制本次生成的兑换码
+
+管理接口：
+
+```text
+POST /api/admin/auth/login
+GET  /api/admin/auth/me
+POST /api/admin/auth/logout
+POST /api/admin/redeem-codes/generate
+GET  /api/admin/redeem-codes
+```
+
+登录成功后使用 `admin_session` 会话 Cookie 和 CSRF Cookie 访问后台。`X-Admin-Token` 仅保留给服务器内部运维调用，不是管理页面的登录方式。兑换码明文只在生成响应和管理员页面本次结果中出现，数据库只保存哈希和前缀。
+
+## 访客 API
+
+```text
+POST /api/entitlements/redeem
+GET  /api/catalog
+POST /api/generation
+POST /api/agent/generation
+POST /api/shares
+GET  /api/shares/{shareId}
+GET  /api/shares/{shareId}/images/{index}
+GET  /api/shares/{shareId}/download/{index}
+GET  /api/assets/{assetId}
+GET  /api/health
+```
+
+生图和分享请求使用 `X-Entitlement-Token`。经典生图和 Agent 生图均使用 `multipart/form-data` 上传照片，客户端只能提交风格 ID 或已发布的背景 ID，不能提交模型提示词。
+
+## 环境变量
+
+复制 `.env.example` 为 `.env.local`，至少配置：
 
 ```dotenv
-# 离线演示
-AI_PROVIDER=mock
-VITE_GENERATION_MODE=mock
-
-# GPT Image 2：OpenAI Images API 兼容服务
-AI_PROVIDER=gpt-image-2
-VITE_GENERATION_MODE=api
-GPT_IMAGE_BASE_URL=https://你的自定义服务/v1
-GPT_IMAGE_API_KEY=服务端密钥
-GPT_IMAGE_MODEL=gpt-image-2
-GPT_IMAGE_ENDPOINT=/images/edits
-
-# 火山方舟 Seedream
-AI_PROVIDER=seedream
-VITE_GENERATION_MODE=api
-ARK_API_KEY=火山方舟APIKey
-ARK_SEEDREAM_MODEL=你的推理接入点ID
-
-# 即梦图生图 3.0 智能参考
-AI_PROVIDER=jimeng-i2i
-VITE_GENERATION_MODE=api
-VOLC_ACCESS_KEY_ID=火山引擎AccessKeyID
-VOLC_SECRET_ACCESS_KEY=火山引擎SecretAccessKey
-JIMENG_SCALE=0.5
-JIMENG_WIDTH=1024
-JIMENG_HEIGHT=1536
-
-# Gemini 3.1 Flash Image：上传原图后进行 Edit 修图
-AI_PROVIDER=gemini-3.1-flash-image
-VITE_GENERATION_MODE=api
-GEMINI_IMAGE_BASE_URL=https://deepcoding.sbs/v1
-GEMINI_IMAGE_API_KEY=服务端密钥
-GEMINI_IMAGE_MODEL=gemini-3.1-flash-image
-GEMINI_IMAGE_ENDPOINT=/chat/completions
+APP_ENV=development
+API_HOST=0.0.0.0
+API_PORT=8787
+ADMIN_TOKEN=请替换为内部运维随机密钥
+DATABASE_URL=
+MYSQL_ENABLED=true
+MYSQL_HOST=远程 MySQL 地址
+MYSQL_PORT=3306
+MYSQL_USER=数据库用户名
+MYSQL_PASSWORD=数据库密码
+MYSQL_DATABASE=数据库名
+PUBLIC_BASE_URL=http://127.0.0.1:8787
 ```
 
-启动前后端：
+图像与视觉供应商全部在数据库的 `model_configs` 表里配置：在后台「模型配置」新增一行（接口地址、接口路径、模型名、API Key），设为默认即可生效，不需要改 `.env` 重启。默认行（`is_default=1`）优先，其余启用行作为同协议的备用线路，主线路故障时自动接管。
 
-```bash
-npm install
-npm run dev
+供应商名（`provider` 列）可以自由填写供应商店名；当前只适配 `gpt-image-2`，所以只有填 `gpt-image-2` 或 `mock`（仅本地调试）才会精确选中实现，填店名或仓库里其他实现名（`gpt-image-2-url`、`seedream`、`jimeng-i2i`、`gemini-3.1-flash-image`）都按 OpenAI 兼容协议走 `gpt-image-2`。
+
+同一条配置行还承载该线路的容错参数，均在后台「图片生成模型」编辑，不需要改 `.env`：
+
+| 字段 | 作用 | 默认值 |
+| --- | --- | --- |
+| 请求超时（毫秒） | 单次上游调用超时 | 按行填写 |
+| 最大重试次数 | 同一线路内部重试几次 | 3 |
+| 熔断阈值 | 连续失败几次后跳过该线路 | 1 |
+| 冷却时间（秒） | 跳过后多久放行一次探测 | 60 |
+
+一条线路的最坏耗时约为「最大重试次数 × 请求超时」，必须留在前端 660 秒的请求预算内，否则前端会先超时，备用线路根本轮不到。
+
+Agent 模式还需要管理员发布已完成视觉分析的 JPEG、PNG 或 WebP 背景素材。不要使用 `VITE_` 前缀保存任何服务端密钥。
+
+## 测试
+
+Python 后端：
+
+```powershell
+python -m pytest backend/tests
 ```
 
-前端仍运行在 `http://localhost:5173`，API 服务运行在 `http://127.0.0.1:8787`，Vite 会自动代理 `/api`。生产构建后使用 `npm run start`，Node 服务会同时托管 `dist` 和 API。
+前端和浏览器流程：
 
-GPT Image 2 适配器发送 `multipart/form-data`，支持上游返回 `data[0].b64_json` 或 `data[0].url`。Seedream 适配器发送 JSON，并兼容 `data[0]`/`images[0]` 的 base64 或 URL 返回。即梦图生图适配器使用火山引擎 AK/SK 在 Node 服务端签名，提交 `jimeng_i2i_v30` 异步任务并在适配器内部查询至完成。Gemini 适配器使用 OpenAI 兼容聊天接口，将游客原图和数据库风格提示词作为 Edit 修图请求提交，并从 `choices[0].message.content` 的图片 Data URI 中提取 JPEG、PNG 或 WebP 结果；它不支持本站的纯文本空白生图流程。前端流程不变。各服务的真实图片进度通常不是流式百分比，页面上的进度是有界的等待反馈，不代表供应商实际进度。
-
-也可以用项目自带脚本直接测试 GPT Image 2 图片编辑。脚本会自动查找 `test/` 或 `src/test/` 下的第一张图片，并把结果保存到 `test/output/`：
-
-```bash
-copy .env.example .env.local
-# 在 .env.local 中填写 GPT_IMAGE_BASE_URL 和 GPT_IMAGE_API_KEY
-npm run test:gpt-image-2
+```powershell
+npm run lint
+npm test
+npm run build
+npx playwright test e2e/kiosk-flow.spec.ts
 ```
 
-如需指定输入、输出或修改指令：
+## Android
 
-```bash
-npm run test:gpt-image-2 -- --input src/test/你的图片.png --output test/output/result.png --prompt "保留人物不变，把背景改成雪山日落"
+安卓端仍然由 Capacitor 封装。照片由安卓设备摄像头拍摄后通过 HTTP 上传到 Python API，服务器不会调用安卓设备摄像头。明文 HTTP 和摄像头权限配置沿用现有 Android 工程约束。
+
+```powershell
+npm run android:sync
+npm run android:build
 ```
 
-API Key、火山引擎 AK/SK 只能写入 `.env.local` 或部署平台的服务端密钥配置，不能使用 `VITE_GPT_IMAGE_API_KEY`、`VITE_ARK_API_KEY`、`VITE_VOLC_ACCESS_KEY_ID`、`VITE_GEMINI_IMAGE_API_KEY` 等前端变量。
-
-## 生图日志
-
-服务端会将每个接口的请求开始、完成、状态码、404、JSON 解析异常，以及生图参数校验、每个风格的模型调用、上游失败、成功和总耗时写入 `logs/generation.log`，每行是一条 JSON 日志。生图成功日志包含请求 ID、provider、实际模型、风格 ID、风格名称、生成资源 ID、输出类型、输出大小和耗时；失败日志包含错误码、上游 HTTP 状态和安全截断后的错误摘要，可用于定位认证失败、限流、超时、上游返回格式错误等问题。日志不会记录 API Key、原始照片、Base64 图片、生成图片内容或提示词。可通过 `LOG_LEVEL`、`LOG_FILE` 和 `LOG_RETENTION_DAYS` 配置日志级别、文件路径和保留天数。
-
-
-- `getUserMedia` 可用时调用真实摄像头；权限拒绝或无摄像头时自动使用示例图。
-- AI 生图由 `GenerationService` mock 实现，不调用任何模型供应商。
-- 二维码为演示分享 URL；真实上线需后端、对象存储和公网 HTTPS 分享页。
-- 模拟支付仅用于 Demo。生产必须使用 `PAYMENT_MODE=wechat-native`，并通过公网 HTTPS 接收微信回调。
-
-## 后续接入
-
-页面只依赖 `src/services/contracts.ts` 中的接口。后续可分别替换 `PaymentService`、`GenerationService` 与 `ShareService`，无需改动主流程组件。
+旧 Node/支付运行时代码已移除；当前后端唯一运行时是 `backend/` 下的 Python/FastAPI。

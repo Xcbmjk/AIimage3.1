@@ -16,13 +16,13 @@ Install dependencies:
 npm install
 ```
 
-Run the web app and local AI API together:
+Run the web app and local Python API together:
 
 ```bash
 npm run dev
 ```
 
-This starts Vite on `http://localhost:5173` and the Node API on `http://127.0.0.1:8787`. Vite proxies `/api` to the API server.
+This starts Vite on `http://localhost:5173` and the Python API on `http://127.0.0.1:8787`. Vite proxies `/api` to the API server.
 
 Run only one side:
 
@@ -53,7 +53,7 @@ npm run build
 npm run start
 ```
 
-`npm run build` type-checks/builds both the browser app and `server/`. `npm run start` runs the compiled Node server, which serves `dist` as well as the API when the build exists.
+`npm run build` type-checks and builds the browser app. `npm run start` starts the Python/FastAPI runtime; when `STATIC_DIRECTORY=dist`, it serves `dist` and the API.
 
 ## Configuration
 
@@ -65,17 +65,19 @@ The browser-side switch is:
 VITE_GENERATION_MODE=mock
 ```
 
-Use `mock` for offline demos. Use `api` to call the local Node proxy.
+Use `mock` for offline demos. Use `api` to call the local Python API.
 
-The server-side provider switch is:
+The server-side provider is chosen in the database, not in `.env`:
 
-```dotenv
-AI_PROVIDER=mock
+```
+model_configs (image_generation)  →  the default row decides the vendor
 ```
 
-Supported values are `mock`, `gpt-image-2`, and `seedream`.
+Add a row through the admin console (base URL, endpoints, model, API key) and mark it default. Other enabled rows act as standby lines and take over when the default line fails. `model_configs.provider` is a free-form vendor label; it only selects an implementation when it matches `SELECTABLE_PROVIDER_KEYS` (`mock`, `gpt-image-2`) — the product currently targets `gpt-image-2` alone, so the other shipped implementations degrade to it rather than switching protocols. Every other label is treated as OpenAI-compatible. Only `app_env="test"` with no row falls back to the mock provider.
 
-For GPT Image 2-compatible services, configure `GPT_IMAGE_BASE_URL`, `GPT_IMAGE_API_KEY`, `GPT_IMAGE_MODEL`, and optionally endpoint/size/response format. For Volcengine Ark Seedream, configure `ARK_API_KEY` and `ARK_SEEDREAM_MODEL` (the Ark inference endpoint/model ID), plus the optional Ark base URL, endpoint, size, response format, and watermark settings. Never use `VITE_` variables for provider secrets.
+Per-vendor resilience is stored per row rather than in the environment: `timeout_ms`, `max_attempts`, `failure_threshold` and `cooldown_seconds`. `failure_threshold` defaults to 1 because each style contributes only one line failure per request.
+
+The `GPT_IMAGE_*`, `ARK_*`, `VOLC_*`, `JIMENG_*`, and `GEMINI_IMAGE_*` settings remain only as fallbacks for providers that cannot be described by an OpenAI-compatible row. Never use `VITE_` variables for provider secrets.
 
 The API health endpoint is:
 
@@ -101,20 +103,19 @@ UI code depends on the service object exported by `src/services/index.ts`, not d
 
 - `src/mocks/services/` contains offline camera, entitlement, generation, share, and style implementations.
 - `src/services/httpGeneration.ts` is the browser implementation for real generation. It sends the photo and selected style IDs to `/api/generation`, reports bounded perceived progress while synchronous provider requests are pending, and maps timeout/failure into user-visible errors.
-- `VITE_GENERATION_MODE` chooses mock vs HTTP generation in the browser. `AI_PROVIDER` is deliberately server-only and must not be exposed in the bundle.
+- `VITE_GENERATION_MODE` chooses mock vs HTTP generation in the browser. The server provider is deliberately server-only, resolved from the database, and must not be exposed in the bundle.
 
-### Node generation API
+### Python generation API
 
-`server/index.ts` creates the Express server, loads `.env` configuration, exposes `/api/health`, mounts the generation route, and serves the built frontend in production.
+`backend/app/main.py` creates the FastAPI application, loads runtime configuration,
+mounts visitor/admin routes, runs maintenance, and serves the built frontend.
 
-- `server/config.ts` validates provider-specific environment variables and keeps provider configuration server-side.
-- `server/routes/generation.ts` validates session/photo/style input, decodes the data URL, looks up allowed style prompts from the shared fixture catalog, invokes the configured provider, and returns normalized assets.
-- `server/providers/types.ts` defines the adapter boundary.
-- `server/providers/mock.ts` returns local fixture images.
-- `server/providers/gptImage2.ts` sends multipart OpenAI Images API-compatible requests and accepts base64 or URL responses.
-- `server/providers/seedream.ts` sends JSON requests to the Ark endpoint and accepts common `data`/`images` base64 or URL response shapes.
-- `server/lib/images.ts` validates/decodes image data URLs, normalizes base64 responses, and safely downloads HTTPS image URLs returned by providers.
-- `server/lib/errors.ts` maps upstream statuses/timeouts to stable, non-sensitive API error responses.
+- `backend/app/config.py` validates provider-specific environment variables and keeps provider configuration server-side.
+- `backend/app/api/generation.py` validates multipart session/photo/style input and delegates generation to the domain service.
+- `backend/app/providers/` defines the provider adapter boundary and provider implementations.
+- `backend/app/storage/images.py` validates real image formats, dimensions, and byte limits.
+- `backend/app/providers/images.py` normalizes provider images and safely downloads HTTPS image URLs.
+- `backend/app/api/errors.py` maps failures to stable, non-sensitive API responses.
 
 Provider-specific request differences belong in their adapter. Do not add provider branching to `KioskFlow` or the reducer.
 
