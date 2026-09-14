@@ -140,6 +140,11 @@ class ModelConfigInput(BaseModel):
     modelName: str = Field(min_length=1, max_length=160)
     apiKey: str = Field(min_length=1, max_length=10000)
     timeoutMs: int = Field(default=60000, ge=1, le=600000)
+    # Per-line resilience. null means "use the code default"; the request budget
+    # is finite, so the ranges stay deliberately narrow.
+    maxAttempts: int | None = Field(default=None, ge=1, le=5)
+    failureThreshold: int | None = Field(default=None, ge=1, le=20)
+    cooldownSeconds: int | None = Field(default=None, ge=1, le=3600)
     extraConfig: dict[str, object] | None = None
     enabled: bool = True
     isDefault: bool = False
@@ -229,6 +234,9 @@ def _model_config_dict(row: ModelConfig) -> dict[str, object]:
         "modelName": row.model_name,
         "apiKey": row.api_key,
         "timeoutMs": row.timeout_ms,
+        "maxAttempts": row.max_attempts,
+        "failureThreshold": row.failure_threshold,
+        "cooldownSeconds": row.cooldown_seconds,
         "extraConfig": row.extra_config or {},
         "enabled": row.enabled,
         "isDefault": row.is_default,
@@ -686,6 +694,9 @@ def create_admin_router(
                 model_name=payload.modelName.strip(),
                 api_key=payload.apiKey,
                 timeout_ms=payload.timeoutMs,
+                max_attempts=payload.maxAttempts,
+                failure_threshold=payload.failureThreshold,
+                cooldown_seconds=payload.cooldownSeconds,
                 extra_config=payload.extraConfig,
                 enabled=payload.enabled,
                 is_default=payload.enabled and payload.isDefault,
@@ -731,6 +742,9 @@ def create_admin_router(
             row.model_name = payload.modelName.strip()
             row.api_key = payload.apiKey
             row.timeout_ms = payload.timeoutMs
+            row.max_attempts = payload.maxAttempts
+            row.failure_threshold = payload.failureThreshold
+            row.cooldown_seconds = payload.cooldownSeconds
             row.extra_config = payload.extraConfig
             row.enabled = payload.enabled
             row.is_default = payload.enabled and payload.isDefault

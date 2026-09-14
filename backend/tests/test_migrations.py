@@ -69,6 +69,15 @@ def test_initial_alembic_migration_creates_runtime_schema_without_payment_tables
             for foreign_key in foreign_keys
         )
         assert len(database_inspector.get_indexes("audit_logs")) == 2
+
+        # Vendor resilience moved out of the environment and onto the row, so
+        # these three columns must exist and stay nullable for older rows.
+        model_config_columns = {
+            column["name"]: column["nullable"]
+            for column in database_inspector.get_columns("model_configs")
+        }
+        for column_name in ("max_attempts", "failure_threshold", "cooldown_seconds"):
+            assert model_config_columns[column_name] is True
     finally:
         engine.dispose()
         get_settings.cache_clear()

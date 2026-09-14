@@ -73,7 +73,9 @@ The server-side provider is chosen in the database, not in `.env`:
 model_configs (image_generation)  →  the default row decides the vendor
 ```
 
-Add a row through the admin console (base URL, endpoints, model, API key) and mark it default. Other enabled rows act as standby lines and take over when the default line fails. `model_configs.provider` is a free-form vendor label; it only selects a shipped implementation when it matches `mock`, `gpt-image-2`, `gpt-image-2-url`, `seedream`, `jimeng-i2i`, or `gemini-3.1-flash-image` — every other label is treated as OpenAI-compatible. Only `app_env="test"` with no row falls back to the mock provider.
+Add a row through the admin console (base URL, endpoints, model, API key) and mark it default. Other enabled rows act as standby lines and take over when the default line fails. `model_configs.provider` is a free-form vendor label; it only selects an implementation when it matches `SELECTABLE_PROVIDER_KEYS` (`mock`, `gpt-image-2`) — the product currently targets `gpt-image-2` alone, so the other shipped implementations degrade to it rather than switching protocols. Every other label is treated as OpenAI-compatible. Only `app_env="test"` with no row falls back to the mock provider.
+
+Per-vendor resilience is stored per row rather than in the environment: `timeout_ms`, `max_attempts`, `failure_threshold` and `cooldown_seconds`. `failure_threshold` defaults to 1 because each style contributes only one line failure per request.
 
 The `GPT_IMAGE_*`, `ARK_*`, `VOLC_*`, `JIMENG_*`, and `GEMINI_IMAGE_*` settings remain only as fallbacks for providers that cannot be described by an OpenAI-compatible row. Never use `VITE_` variables for provider secrets.
 

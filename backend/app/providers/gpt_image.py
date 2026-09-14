@@ -123,7 +123,7 @@ class GptImageProvider:
             image, output_mime = self._decode(payload)
             return GeneratedImage(image, output_mime, f"gpt-{style_id}")
 
-        return await retry_operation(request)
+        return await retry_operation(request, max_attempts=self.config.max_attempts)
 
     async def compose(
         self,
@@ -153,4 +153,4 @@ class GptImageProvider:
             image, output_mime = self._decode(payload)
             return GeneratedImage(image, output_mime, f"gpt-agent-{background_id}")
 
-        return await retry_operation(request)
+        return await retry_operation(request, max_attempts=self.config.max_attempts)

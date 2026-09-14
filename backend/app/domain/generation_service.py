@@ -20,6 +20,8 @@ from ..db.models import (
     StyleVersion,
 )
 from ..model_configs import (
+    DEFAULT_COOLDOWN_SECONDS,
+    DEFAULT_FAILURE_THRESHOLD,
     IMAGE_GENERATION,
     MOCK_PROVIDER_KEY,
     get_active_model_configs,
@@ -60,17 +62,19 @@ def _failure_payload(style_id: str, error: ProviderError) -> dict[str, object]:
 _shared_breaker: CircuitBreaker | None = None
 
 
-def shared_circuit_breaker(settings: Settings) -> CircuitBreaker:
+def shared_circuit_breaker() -> CircuitBreaker:
     """One breaker per process, so a failing vendor stays skipped.
 
     The request path and the retry worker both use it. A breaker rebuilt per
     request would forget every failure the moment the response was written.
+    Threshold and cooldown arrive per line from the database row, so the values
+    here are only the fallback for a line constructed without them.
     """
     global _shared_breaker
     if _shared_breaker is None:
         _shared_breaker = CircuitBreaker(
-            failure_threshold=settings.provider_failure_threshold,
-            cooldown_seconds=float(settings.provider_cooldown_seconds),
+            failure_threshold=DEFAULT_FAILURE_THRESHOLD,
+            cooldown_seconds=DEFAULT_COOLDOWN_SECONDS,
         )
     return _shared_breaker
 
@@ -123,7 +127,7 @@ class GenerationService:
         self.asset_store = asset_store
         self.repository = repository or GenerationRepository()
         self.queue = GenerationQueue()
-        self.breaker = breaker or shared_circuit_breaker(settings)
+        self.breaker = breaker or shared_circuit_breaker()
 
     async def generate_classic(
         self,
@@ -666,18 +670,22 @@ class GenerationService:
                 503,
             )
         transport = getattr(self.provider, "transport", None)
-        lines = [
-            GenerationLine(
-                key=row.id,
-                provider=create_provider(
-                    self.settings,
-                    provider_key=resolve_provider_key(row),
-                    transport=transport,
-                    image_config=to_image_generation_runtime_config(row),
-                ),
+        lines: list[GenerationLine] = []
+        for row in rows:
+            image_config = to_image_generation_runtime_config(row)
+            lines.append(
+                GenerationLine(
+                    key=row.id,
+                    provider=create_provider(
+                        self.settings,
+                        provider_key=resolve_provider_key(row),
+                        transport=transport,
+                        image_config=image_config,
+                    ),
+                    failure_threshold=image_config.failure_threshold,
+                    cooldown_seconds=image_config.cooldown_seconds,
+                )
             )
-            for row in rows
-        ]
         if len(lines) == 1:
             return lines[0].provider
         return FailoverImageProvider(lines, self.breaker)

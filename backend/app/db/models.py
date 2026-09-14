@@ -271,6 +271,11 @@ class ModelConfig(Base):
     model_name: Mapped[str] = mapped_column(String(160), nullable=False)
     api_key: Mapped[str] = mapped_column(Text, nullable=False)
     timeout_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Per-line resilience. Nullable so rows created before these columns existed
+    # keep working; a NULL falls back to the defaults in app.model_configs.
+    max_attempts: Mapped[int | None] = mapped_column(Integer)
+    failure_threshold: Mapped[int | None] = mapped_column(Integer)
+    cooldown_seconds: Mapped[int | None] = mapped_column(Integer)
     extra_config: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

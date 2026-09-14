@@ -74,7 +74,7 @@ class GptImageUrlProvider:
             image, output_mime = _decode_first_b64(payload, self.name)
             return GeneratedImage(image, output_mime, f"gpt-url-{style_id}")
 
-        return await retry_operation(request)
+        return await retry_operation(request, max_attempts=self.config.max_attempts)
 
     async def compose(
         self,
@@ -141,4 +141,4 @@ class GptImageUrlProvider:
             image, output_mime = _decode_first_b64(payload, self.name)
             return GeneratedImage(image, output_mime, f"gpt-url-agent-{background_id}")
 
-        return await retry_operation(request)
+        return await retry_operation(request, max_attempts=self.config.max_attempts)

@@ -31,11 +31,25 @@ PROVIDER_KEYS = frozenset(
         "gemini-3.1-flash-image",
     }
 )
+# The subset a database row may actually select, and the only values the admin
+# console offers. The product currently targets gpt-image-2 alone, so the other
+# implementations stay in the repository for future use but are unreachable
+# from configuration: a row naming one degrades to the default implementation
+# instead of switching protocols. Keep this in sync with PROVIDER_KEY_OPTIONS
+# in src/admin/AdminApp.tsx.
+SELECTABLE_PROVIDER_KEYS = frozenset({"mock", "gpt-image-2"})
 # Matches the implementation the database path already used: classic mode posts
 # the visitor photo to /images/edits. The lookalike ``gpt-image-2-url`` key is a
 # different protocol (text-only /images/generations) and must stay opt-in.
 DEFAULT_PROVIDER_KEY = "gpt-image-2"
 MOCK_PROVIDER_KEY = "mock"
+
+# Per-line resilience defaults, used when a model_configs row leaves the column
+# empty. These are deliberately code constants rather than environment settings:
+# everything an operator tunes about a vendor line lives in the database row.
+DEFAULT_MAX_ATTEMPTS = 3
+DEFAULT_FAILURE_THRESHOLD = 1
+DEFAULT_COOLDOWN_SECONDS = 60.0
 
 
 @dataclass(frozen=True)
@@ -57,6 +71,9 @@ class ImageGenerationRuntimeConfig:
     size: str
     response_format: str
     timeout_ms: int
+    max_attempts: int = DEFAULT_MAX_ATTEMPTS
+    failure_threshold: int = DEFAULT_FAILURE_THRESHOLD
+    cooldown_seconds: float = DEFAULT_COOLDOWN_SECONDS
 
 
 def validate_model_config_input(
@@ -93,6 +110,22 @@ def to_vision_runtime_config(row: ModelConfig) -> VisionRuntimeConfig:
     )
 
 
+def _positive_number(value: object, default: float) -> float:
+    """Coerce a stored column to a usable positive number.
+
+    The resilience columns are nullable so rows that predate them keep working:
+    a NULL, a non-numeric value or a non-positive one falls back to the code
+    default rather than silently disabling the guard it configures.
+    """
+    if isinstance(value, bool) or value is None:
+        return default
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
 def to_image_generation_runtime_config(row: ModelConfig) -> ImageGenerationRuntimeConfig:
     extra = row.extra_config or {}
     return ImageGenerationRuntimeConfig(
@@ -104,6 +137,15 @@ def to_image_generation_runtime_config(row: ModelConfig) -> ImageGenerationRunti
         size=str(extra.get("size") or "2K"),
         response_format="b64_json",
         timeout_ms=row.timeout_ms,
+        max_attempts=int(
+            _positive_number(row.max_attempts, DEFAULT_MAX_ATTEMPTS)
+        ),
+        failure_threshold=int(
+            _positive_number(row.failure_threshold, DEFAULT_FAILURE_THRESHOLD)
+        ),
+        cooldown_seconds=_positive_number(
+            row.cooldown_seconds, DEFAULT_COOLDOWN_SECONDS
+        ),
     )
 
 
@@ -111,12 +153,13 @@ def resolve_provider_key(row: ModelConfig) -> str:
     """Map a stored configuration row to a provider implementation key.
 
     The column stays administrator-editable free text so a vendor label such as
-    ``deepcoding`` keeps its meaning in the console and in logs. Only values
-    that name a shipped implementation select one; every other label is an
+    ``deepcoding`` keeps its meaning in the console and in logs. Only values in
+    ``SELECTABLE_PROVIDER_KEYS`` select an implementation; every other label —
+    including implementations that ship but are not currently offered — is an
     OpenAI-compatible Images API endpoint, matching the shape of the form.
     """
     value = (row.provider or "").strip().lower()
-    if value in PROVIDER_KEYS:
+    if value in SELECTABLE_PROVIDER_KEYS:
         return value
     return DEFAULT_PROVIDER_KEY
 

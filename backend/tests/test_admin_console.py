@@ -305,6 +305,9 @@ async def test_admin_image_model_config_accepts_images_api_settings(admin_consol
             "modelName": "gpt-image-2",
             "apiKey": "test-key",
             "timeoutMs": 300000,
+            "maxAttempts": 2,
+            "failureThreshold": 1,
+            "cooldownSeconds": 30,
             "extraConfig": {
                 "generationEndpoint": "/images/generations",
                 "size": "2K",
@@ -317,6 +320,10 @@ async def test_admin_image_model_config_accepts_images_api_settings(admin_consol
     assert response.status_code == 201
     assert response.json()["modelType"] == "image_generation"
     assert response.json()["extraConfig"]["size"] == "2K"
+    # Per-line resilience round-trips through the console, not the environment.
+    assert response.json()["maxAttempts"] == 2
+    assert response.json()["failureThreshold"] == 1
+    assert response.json()["cooldownSeconds"] == 30
 
     health = await client.get("/api/health")
     assert health.json()["checks"]["imageGeneration"]["details"] == {

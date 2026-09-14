@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from ..model_configs import DEFAULT_COOLDOWN_SECONDS, DEFAULT_FAILURE_THRESHOLD
 from .base import GeneratedImage, ImageProvider
 from .circuit import CircuitBreaker
 from .errors import ProviderError, is_line_failure
@@ -9,10 +10,17 @@ from .errors import ProviderError, is_line_failure
 
 @dataclass(frozen=True)
 class GenerationLine:
-    """One configured vendor row plus the breaker key that tracks it."""
+    """One configured vendor row plus the breaker key that tracks it.
+
+    ``failure_threshold`` and ``cooldown_seconds`` come from the row, so the
+    administrator tunes degradation in the console rather than in the
+    environment. The defaults keep hand-built lines (tests, tooling) working.
+    """
 
     key: str
     provider: ImageProvider
+    failure_threshold: int = DEFAULT_FAILURE_THRESHOLD
+    cooldown_seconds: float = DEFAULT_COOLDOWN_SECONDS
 
 
 @dataclass
@@ -76,7 +84,11 @@ class FailoverImageProvider:
             except ProviderError as error:
                 if not is_line_failure(error):
                     raise
-                self.breaker.record_failure(line.key)
+                self.breaker.record_failure(
+                    line.key,
+                    failure_threshold=line.failure_threshold,
+                    cooldown_seconds=line.cooldown_seconds,
+                )
                 last_line_error = error
                 continue
             self.breaker.record_success(line.key)

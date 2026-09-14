@@ -90,17 +90,25 @@ def retryable(error: BaseException) -> bool:
     return isinstance(error, ProviderError) and error.retryable
 
 
-async def retry_operation(operation: Callable[[], Awaitable[T]]) -> T:
+async def retry_operation(
+    operation: Callable[[], Awaitable[T]],
+    *,
+    max_attempts: int = MAX_ATTEMPTS,
+) -> T:
     """Run an upstream call with bounded backoff.
 
     Only errors marked retryable are retried; a bad API key or a malformed
     prompt fails immediately instead of burning the whole timeout budget.
+    ``max_attempts`` comes from the configured vendor row, because it is part
+    of the request's total time budget: every extra attempt costs another full
+    ``timeout_ms`` before the request can move to the standby line.
     """
-    for attempt in range(MAX_ATTEMPTS):
+    attempts = max(1, int(max_attempts))
+    for attempt in range(attempts):
         try:
             return await operation()
         except ProviderError as error:
-            if attempt == MAX_ATTEMPTS - 1 or not retryable(error):
+            if attempt == attempts - 1 or not retryable(error):
                 raise
             retry_after = (error.details or {}).get("retryAfterSeconds")
             hint = retry_after if isinstance(retry_after, (int, float)) else None

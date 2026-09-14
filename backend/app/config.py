@@ -94,12 +94,6 @@ class Settings(BaseSettings):
     max_generation_attempts: int = Field(
         default=3, validation_alias="MAX_GENERATION_ATTEMPTS"
     )
-    provider_failure_threshold: int = Field(
-        default=3, validation_alias="PROVIDER_FAILURE_THRESHOLD"
-    )
-    provider_cooldown_seconds: int = Field(
-        default=60, validation_alias="PROVIDER_COOLDOWN_SECONDS"
-    )
 
     gpt_image_base_url: str = Field(default="", validation_alias="GPT_IMAGE_BASE_URL")
     gpt_image_api_key: SecretStr = Field(
@@ -201,8 +195,6 @@ class Settings(BaseSettings):
         "generation_stale_minutes",
         "generation_worker_interval_seconds",
         "max_generation_attempts",
-        "provider_failure_threshold",
-        "provider_cooldown_seconds",
     )
     @classmethod
     def positive_integer(cls, value: int) -> int:

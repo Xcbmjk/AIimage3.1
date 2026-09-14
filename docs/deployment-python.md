@@ -190,11 +190,13 @@ python -c "import secrets; print(secrets.token_hex(32))"
 
 图像供应商在管理员后台的「图片生成模型」页面配置，保存到数据库 `model_configs` 表：
 
-1. 新增一行，填写配置名称、供应商、接口地址、编辑接口路径、生成接口路径、模型名、API Key 与超时（毫秒）；
+1. 新增一行，填写配置名称、供应商、接口地址、编辑接口路径、生成接口路径、模型名、API Key、超时（毫秒）、最大重试次数、熔断阈值与冷却时间（秒）；
 2. 点击「获取可用模型」选择模型，「保存配置」后「设为默认」；
 3. 只有 `is_default=1` 且 `enabled=1` 的行会生效；其余启用行作为同协议的备用线路，默认线路故障时自动接管。
 
-「供应商」字段是自由文本，用于记录中转站名称（如 `deepcoding`、`NewAPI`）。只有填 `gpt-image-2`、`gpt-image-2-url`、`seedream`、`jimeng-i2i`、`gemini-3.1-flash-image`、`mock` 这类实现名才会切换底层实现；其他名称一律按 OpenAI 兼容协议（默认实现 `gpt-image-2`，经典模式走 `/images/edits`）处理。
+「供应商」字段是自由文本，用于记录中转站名称（如 `deepcoding`、`NewAPI`）。当前产品只适配 `gpt-image-2`：只有填 `gpt-image-2`（或仅本地调试用的 `mock`）才会精确选中实现，填店名或仓库中其他实现名（`gpt-image-2-url`、`seedream`、`jimeng-i2i`、`gemini-3.1-flash-image`）一律按 OpenAI 兼容协议（默认实现 `gpt-image-2`，经典模式走 `/images/edits`）处理。其余实现代码仍保留在仓库以备将来使用，但配置无法选中它们。
+
+线路容错参数逐个行配置，不在环境变量里：`timeout_ms`、`max_attempts`、`failure_threshold`、`cooldown_seconds`（后三列由迁移 `005_model_config_resilience` 引入，留空则用代码默认值 3 / 1 / 60）。`failure_threshold` 默认 1 是有意为之：一个请求里每个风格只贡献一次线路失败，阈值定高了前几个风格都会在死线路把重试预算烧完。一条线路的最坏耗时约为「`max_attempts` × `timeout_ms`」，必须留在前端 660 秒请求预算内（前端 `abort` 与 Vite 代理超时都是 `660000`），否则前端先超时、备用线路不会被执行。
 
 `GPT_IMAGE_*`、`ARK_*`、`VOLC_*`、`JIMENG_*`、`GEMINI_IMAGE_*` 仅作为非 OpenAI 兼容实现的兜底参数保留；只要数据库里有可用的默认行，运行时就不会读取它们来决定供应商。`PUBLIC_BASE_URL` 按当前项目部署约束可以使用 HTTP。
 
