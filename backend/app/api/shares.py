@@ -16,7 +16,6 @@ from ..db.models import Share
 from ..dependencies import create_db_dependency
 from ..domain.entitlement_service import utc_now
 from ..domain.share_service import SHARE_ID_PATTERN, ShareService
-from ..domain.watermark import apply_footer_watermark
 from ..security.entitlement_auth import require_entitlement
 from ..storage.assets import AssetStore
 
@@ -254,11 +253,11 @@ def create_share_router(
             stored = asset_store.read(asset.file_path, category="output")
         except (FileNotFoundError, ValueError):
             return _not_found()
-        # 保存的图片统一带品牌水印（微信长按保存走的也是这个接口）
-        watermarked, mime_type = apply_footer_watermark(stored.data)
+        # 图片在生成落盘时已带品牌水印（见 generation_service._persist_results），
+        # 这里直接返回存储内容，避免二次叠加。
         return Response(
-            content=watermarked,
-            media_type=mime_type,
+            content=stored.data,
+            media_type=stored.mime_type,
             headers={"Cache-Control": "private, max-age=3600"},
         )
 
@@ -276,11 +275,10 @@ def create_share_router(
             stored = asset_store.read(asset.file_path, category="output")
         except (FileNotFoundError, ValueError):
             return _not_found()
-        watermarked, mime_type = apply_footer_watermark(stored.data)
-        extension = mime_type.rsplit("/", 1)[-1].replace("jpeg", "jpg")
+        extension = stored.mime_type.rsplit("/", 1)[-1].replace("jpeg", "jpg")
         return Response(
-            content=watermarked,
-            media_type=mime_type,
+            content=stored.data,
+            media_type=stored.mime_type,
             headers={
                 "Cache-Control": "private, max-age=3600",
                 "Content-Disposition": f'attachment; filename="shan-jing-ai-{index}.{extension}"',

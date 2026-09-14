@@ -520,5 +520,16 @@ async def test_generation_worker_consumes_persisted_retry_job(tmp_path) -> None:
         assert job is not None and job.status == "succeeded"
         assert entitlement is not None and entitlement.status == "consumed"
         assert len(assets) == 1
-        assert store.read(assets[0].file_path).data == store.read(source.relative_path).data
+        # 落盘时已烧入品牌水印：内容与源照片不再相同，但尺寸保持一致
+        stored_asset = store.read(assets[0].file_path)
+        source_image = store.read(source.relative_path)
+        assert stored_asset.data != source_image.data
+        from io import BytesIO
+
+        from PIL import Image
+
+        with Image.open(BytesIO(stored_asset.data)) as watermarked, Image.open(
+            BytesIO(source_image.data)
+        ) as original:
+            assert watermarked.size == original.size
     await engine.dispose()

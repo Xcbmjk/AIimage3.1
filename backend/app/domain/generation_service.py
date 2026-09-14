@@ -40,6 +40,7 @@ from ..storage.images import validate_image_bytes
 from ..vision.analyze import compose_fallback_prompt, finalize_agent_prompt
 from .entitlement_service import utc_now
 from .portrait_prompt import compose_portrait_prompt
+from .watermark import apply_footer_watermark
 
 
 @dataclass(frozen=True)
@@ -741,6 +742,12 @@ class GenerationService:
         persisted: list[Asset] = []
         saved_paths: list[str] = []
         failed_styles = failures or []
+        # 品牌水印在生成落盘时一次性烧入（写事务外逐张处理，避免拉长事务），
+        # 之后大屏展示、分享、下载、明信片拿到的都是同一份带水印的图。
+        prepared = [
+            (style_id, *apply_footer_watermark(result.data))
+            for style_id, result in results
+        ]
         async with session.begin():
             completed = await self.repository.find_job(
                 session,
@@ -749,10 +756,10 @@ class GenerationService:
             )
             if completed is None:
                 raise ApiError("GENERATION_FAILED", "生图任务不存在", 500)
-            for style_id, result in results:
+            for style_id, watermarked_data, watermarked_mime in prepared:
                 saved = self.asset_store.save(
-                    result.data,
-                    result.mime_type,
+                    watermarked_data,
+                    watermarked_mime,
                     "output",
                     retention_days=30,
                 )
