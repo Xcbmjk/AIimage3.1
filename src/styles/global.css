@@ -736,6 +736,8 @@ button {
 
 .viewfinder video,
 .viewfinder > img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -2313,3 +2315,121 @@ button {
 .catalog-error b { display: block; color: #9c3a30; font-size: 14px; }
 .catalog-error span { display: block; margin-top: 4px; color: #7d5a55; font-size: 12px; }
 .catalog-error .secondary-cta { white-space: nowrap; }
+
+/* ==========================================================================
+   竖屏一体机 · 32 英寸 / 1080 × 1920（主用设备）
+   --------------------------------------------------------------------------
+   这块屏的 CSS 像素宽 1080、物理宽约 40cm，观看距离约 1 米；手机是 390px
+   宽、约 7cm、距离 30cm。两者的「每 CSS 像素张角」差近一倍，所以同一个
+   字号在这一体机上看起来只有手机上的一半。这里按约 1.6 倍的等效基准
+   （≈675 × 1200）放大关键尺寸，并顺手修掉两处会真的挡住操作的问题：
+   风格目录改 3 列、取景框改成按高度收缩。
+   ========================================================================== */
+@media (min-width: 900px) and (min-height: 1400px) {
+  .welcome-copy,
+  .generating-copy { margin-top: 20vh; }
+  .welcome-copy h1,
+  .generating-copy h1 { font-size: clamp(120px, 17vw, 210px); letter-spacing: 18px; }
+  .welcome-copy p { font-size: 26px; max-width: 900px; }
+  .eyebrow { font-size: 16px; letter-spacing: 9px; padding: 9px 22px; }
+  .primary-cta { font-size: 26px; padding: 32px 52px; }
+  .primary-cta small { font-size: 17px; }
+  .secondary-cta { font-size: 20px; min-height: 64px; padding: 0 32px; }
+  .trust-row { gap: 48px; font-size: 20px; }
+  .trust-row svg { width: 26px; height: 26px; }
+  .welcome-footer { font-size: 17px; }
+
+  .redeem-panel { width: min(900px, calc(100% - 140px)); margin: clamp(120px, 14vh, 260px) auto 0; padding: 76px 84px; border-radius: 14px; }
+  .redeem-panel h1 { font-size: 82px; }
+  .redeem-panel > p { font-size: 22px; }
+  .redeem-panel label { font-size: 19px; }
+  .redeem-panel input { font-size: 24px; padding: 24px 26px; }
+  .redeem-note { font-size: 16px; }
+  .redeem-error { font-size: 18px; padding: 14px 18px; }
+
+  .step-header { padding: 0 48px; }
+  .step-header h2 { font-size: 34px; }
+  .step-header .icon-button { width: 62px; height: 62px; }
+
+  .camera-intro h1 { font-size: 66px; }
+  .camera-intro p { font-size: 22px; }
+  /* 取景框按可用高度收缩：固定 84% 宽时高度会顶掉快门按钮 */
+  .viewfinder { width: auto; height: min(56vh, 1020px); }
+  .camera-hint { font-size: 20px; }
+  .shutter { font-size: 30px; }
+  .shutter span { transform: scale(1.5); }
+  .upload-test-button { font-size: 19px; padding: 16px 30px; }
+  .privacy-line { font-size: 16px; }
+  .camera-error { width: min(760px, calc(100% - 60px)); font-size: 19px; padding: 16px 20px; }
+
+  .review-layout { padding: 3vh 6%; }
+  .review-copy h1 { font-size: 78px; }
+  .review-copy p { font-size: 22px; }
+  .portrait-frame { width: min(44vh, 62%); }
+  .dual-actions { gap: 28px; margin-top: 34px; }
+
+  .styles-intro h1 { font-size: 74px; }
+  .styles-intro p { font-size: 21px; }
+  /* 2 列会排到第三行并被 sticky 操作条盖住，游客选不到后面的风格 */
+  .style-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; padding: 0 56px; }
+  .style-motif { font-size: 58px; }
+  .selection-mark { width: 56px; height: 56px; }
+  .style-info h3 { font-size: 32px; }
+  .style-info small { font-size: 14px; }
+  .style-info p { font-size: 15px; }
+  .background-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; padding: 0 56px; }
+  .sticky-action { height: 150px; padding: 24px 56px; }
+  .sticky-action span { font-size: 24px; }
+  .sticky-action small { font-size: 16px; }
+
+  .mode-grid { gap: 40px; padding: 0 60px; }
+  .mode-card__body h3 { font-size: 40px; }
+  .mode-card__body p { font-size: 19px; }
+  .mode-card__cta { font-size: 20px; }
+
+  .job-list { max-width: 1040px; }
+  .job-row b { font-size: 24px; }
+  .job-row small { font-size: 16px; }
+  .generation-note { font-size: 18px; }
+
+  .results-intro h1 { font-size: 82px; }
+  .result-stage { width: min(50vh, 58%); padding: 20px; }
+  .result-thumbs { gap: 24px; margin: 30px 0; }
+  .result-thumbs button { width: 200px; }
+  .result-thumbs button span { font-size: 16px; }
+  /* 按钮条不要横跨整块 1080 宽的屏，居中留边更好看也更接近手指操作习惯 */
+  .results-actions { max-width: 860px; gap: 26px; margin-top: 34px; }
+
+  .download-card { width: min(86%, 1080px); padding: 80px 64px; }
+  .download-copy h1 { font-size: 82px; }
+  .download-copy p { font-size: 22px; }
+  .qr-frame { width: 460px; height: 460px; }
+  .download-steps { font-size: 20px; }
+  .finish-button { font-size: 24px; min-width: 520px; }
+  .download-thanks { font-size: 18px; }
+}
+
+/* 内容高于一屏时允许纵向滚动，避免选项被裁在屏幕外、点也点不到 */
+.styles-screen,
+.backgrounds-screen { overflow-y: auto; }
+
+/* ==========================================================================
+   手机演示（≤820px）：把确认照片页与结果页的纵向间距收紧。
+   原来这两页在 390 × 844 上会顶出屏幕，底部按钮被裁掉一半。
+   ========================================================================== */
+@media (max-width: 820px) {
+  .review-layout { padding: 1.5vh 6% 0; }
+  .review-copy h1 { font-size: 44px; letter-spacing: 4px; margin: 10px 0; }
+  .review-copy p { font-size: 14px; line-height: 1.7; margin: 8px 0 0; }
+  .portrait-frame { width: min(36vh, 62%); padding: 10px; }
+  .dual-actions { gap: 10px; margin-top: 14px; }
+  .dual-actions .secondary-cta,
+  .dual-actions .primary-cta { font-size: 15px; padding: 14px 12px; min-height: 52px; }
+  .results-actions { gap: 10px; margin-top: 8px; }
+  .results-actions .secondary-cta,
+  .results-actions .primary-cta { font-size: 15px; padding: 14px 12px; min-height: 50px; }
+  .results-intro h1 { font-size: 36px; letter-spacing: 4px; margin: 8px 0 4px; }
+  .results-intro p { font-size: 13px; margin: 4px 0 0; }
+  .result-stage { width: min(36vh, 64%); }
+  .result-thumbs { margin-top: 8px; }
+}
