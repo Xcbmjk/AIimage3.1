@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertCircle, ArrowRight, Bot, Camera, Check, ChevronLeft, Clock3, FileText, KeyRound, Maximize2, RefreshCw, ScanLine, ShieldCheck, Sparkles, Upload, Wand2 } from 'lucide-react'
+import { AlertCircle, ArrowRight, Bot, Camera, Check, ChevronLeft, Clock3, FileText, KeyRound, Maximize2, RefreshCw, ScanLine, ShieldCheck, Sparkles, Upload, Wand2, X } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { brand } from '../../config/brand'
 import { productConfig } from '../../config/product'
@@ -332,6 +332,7 @@ function ResultsPage({ styles, backgrounds }: { styles: StylePreset[]; backgroun
   const [activeIndex, setActiveIndex] = useState(0)
   const [sharing, setSharing] = useState(false)
   const [retrying, setRetrying] = useState(false)
+  const [zoomed, setZoomed] = useState(false)
   const isAgent = state.generationMode === 'agent'
   const activeAsset = state.assets[activeIndex]
   const activeStyle = styles.find((style) => style.id === activeAsset?.styleId)
@@ -382,7 +383,7 @@ function ResultsPage({ styles, backgrounds }: { styles: StylePreset[]; backgroun
     <main className="screen results-screen">
       <StepHeader step="05 / 05" title="你的山水作品" />
       <section className="results-intro"><span className="eyebrow eyebrow--dark">YOUR MOUNTAIN STORIES</span><h1>这一刻，已入画</h1><p>{isAgent ? 'Agent 已根据你的照片与所选背景完成合成' : '左右切换查看你的 AI 旅拍作品'}</p></section>
-      <div className="result-stage"><img src={activeAsset?.imageUrl} alt={captionName ?? '生成结果'} /><div className="result-stamp">焕新<br />造像</div><button className="zoom-button"><Maximize2 /></button><div className="result-caption"><small>{captionSubtitle}</small><h3>{captionName}</h3></div></div>
+      <div className="result-stage"><img src={activeAsset?.imageUrl} alt={captionName ?? '生成结果'} /><div className="result-stamp">焕新<br />造像</div><button className="zoom-button" onClick={() => setZoomed(true)} aria-label="放大查看作品"><Maximize2 /></button><div className="result-caption"><small>{captionSubtitle}</small><h3>{captionName}</h3></div></div>
       <div className="result-thumbs">{state.assets.map((asset, index) => { const style = isAgent ? backgrounds.find((item) => item.id === asset.styleId) : styles.find((item) => item.id === asset.styleId); return <button key={asset.id} className={index === activeIndex ? 'active' : ''} onClick={() => setActiveIndex(index)}><img src={asset.imageUrl} alt={style?.name} /><span>{style?.name}</span></button> })}</div>
       {isAgent && state.agentPrompt && (
         <details className="agent-prompt">
@@ -398,6 +399,12 @@ function ResultsPage({ styles, backgrounds }: { styles: StylePreset[]; backgroun
       )}
       {state.error && <div className="results-share-error">{state.error}</div>}
       <div className="results-actions"><button className="secondary-cta" onClick={() => dispatch({ type: 'RESET' })}><RefreshCw /> 再拍一次</button><button className="primary-cta" disabled={sharing} onClick={() => void share()}>{sharing ? <RefreshCw className="spin" /> : <ScanLine />} {sharing ? '正在准备作品' : '微信扫码保存'}</button></div>
+      {zoomed && activeAsset && (
+        <div className="lightbox-backdrop" role="presentation" onClick={() => setZoomed(false)}>
+          <img className="lightbox-image" src={activeAsset.imageUrl} alt={captionName ?? '作品大图'} />
+          <button className="lightbox-close" onClick={() => setZoomed(false)} aria-label="关闭大图"><X size={22} /></button>
+        </div>
+      )}
     </main>
   )
 }
@@ -428,8 +435,18 @@ export function KioskFlow() {
     generationMode === 'api' ? [] : stylePresets,
   )
   const [backgrounds, setBackgrounds] = useState<BackgroundPreset[]>([])
-  useEffect(() => { void services.styles.list().then(setStyles) }, [])
-  useEffect(() => { void services.backgrounds.list().then(setBackgrounds) }, [])
+  const [catalogError, setCatalogError] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
+  // 目录拉不下来时游客会看到一个空白的风格页，且没有任何提示；这里显式报错并给重试入口。
+  useEffect(() => {
+    void services.styles.list().then(setStyles).catch((error) => {
+      setCatalogError(error instanceof Error ? error.message : '风格目录加载失败')
+    })
+  }, [reloadKey])
+  // Agent 背景是可选能力，失败时静默降级为只走经典风格。
+  useEffect(() => {
+    void services.backgrounds.list().then(setBackgrounds).catch(() => undefined)
+  }, [reloadKey])
   const agentEnabled = backgrounds.length > 0
   // 亭机无人值守：作品展示 / 下载页连续 120 秒没有任何触屏或按键操作，
   // 自动回到首页，避免上一位游客扫码离开后，屏幕一直停留在他的结果页。
@@ -449,16 +466,28 @@ export function KioskFlow() {
       for (const event of events) window.removeEventListener(event, rearm)
     }
   }, [state.stage, dispatch])
-  switch (state.stage) {
-    case 'welcome': return <WelcomePage />
-    case 'redeem': return <RedeemPage />
-    case 'camera': return <CameraPage />
-    case 'review': return <ReviewPage />
-    case 'mode': return <ModePage agentEnabled={agentEnabled} />
-    case 'styles': return <StylesPage styles={styles} />
-    case 'backgrounds': return <AgentBackgroundsPage backgrounds={backgrounds} />
-    case 'generating': return <GeneratingPage styles={styles} backgrounds={backgrounds} />
-    case 'results': return <ResultsPage styles={styles} backgrounds={backgrounds} />
-    case 'download': return <DownloadPage />
+  const renderStage = () => {
+    switch (state.stage) {
+      case 'welcome': return <WelcomePage />
+      case 'redeem': return <RedeemPage />
+      case 'camera': return <CameraPage />
+      case 'review': return <ReviewPage />
+      case 'mode': return <ModePage agentEnabled={agentEnabled} />
+      case 'styles': return <StylesPage styles={styles} />
+      case 'backgrounds': return <AgentBackgroundsPage backgrounds={backgrounds} />
+      case 'generating': return <GeneratingPage styles={styles} backgrounds={backgrounds} />
+      case 'results': return <ResultsPage styles={styles} backgrounds={backgrounds} />
+      case 'download': return <DownloadPage />
+    }
   }
+  const needsCatalog = state.stage === 'mode' || state.stage === 'styles' || state.stage === 'backgrounds'
+  return <>
+    {catalogError && needsCatalog && (
+      <div className="catalog-error" role="alert">
+        <div><b>内容加载失败</b><span>{catalogError}</span></div>
+        <button className="secondary-cta" onClick={() => { setCatalogError(''); setReloadKey((value) => value + 1) }}><RefreshCw /> 重新加载</button>
+      </div>
+    )}
+    {renderStage()}
+  </>
 }

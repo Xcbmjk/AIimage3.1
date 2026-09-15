@@ -135,6 +135,35 @@ function ViewContent({ view, role }: { view: View; role: Role }) {
 }
 function PanelTitle({ title, action }: { title: string; action?: string }) { return <div className="panel-title"><h2>{title}</h2>{action && <span className="muted">{action}</span>}</div> }
 function Empty({ text }: { text: string }) { return <div className="empty">{text}</div> }
+type ConfirmRequest = {
+  title: string
+  description: string
+  reasonLabel?: string
+  reasonPlaceholder?: string
+  confirmLabel: string
+  onConfirm: (reason: string) => Promise<void>
+}
+// 原生 confirm/prompt 在触屏和部分浏览器上不弹窗，会静默取消，所以统一走页面内确认框。
+function ConfirmDialog({ request, onClose }: { request: ConfirmRequest; onClose: () => void }) {
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const submit = async () => {
+    setBusy(true)
+    try { await request.onConfirm(reason.trim()); onClose() } finally { setBusy(false) }
+  }
+  return <div className="style-modal-backdrop confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) onClose() }}>
+    <div className="style-modal confirm-modal" role="dialog" aria-modal="true">
+      <div className="style-modal-head"><div><h2>{request.title}</h2><p>{request.description}</p></div></div>
+      {request.reasonLabel && <div className="confirm-body">
+        <label>{request.reasonLabel}<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder={request.reasonPlaceholder} maxLength={200} /></label>
+      </div>}
+      <div className="editor-actions confirm-actions">
+        <button className="secondary-cta" type="button" disabled={busy} onClick={onClose}>取消</button>
+        <button className="primary-btn danger-solid" type="button" disabled={busy} onClick={() => void submit()}>{busy ? '处理中…' : request.confirmLabel}</button>
+      </div>
+    </div>
+  </div>
+}
 
 type Generation = { id: string; sessionId: string; mode: string; status: string; errorCode?: string; attempts: number; createdAt: string; completedAt?: string | null }
 function Overview() {
@@ -252,15 +281,21 @@ function Gallery({ role }: { role: Role }) {
 function Generations() {
   const { data, loading } = useAdminData<{ generations: Generation[] }>('/api/admin/generations', { generations: [] })
   const [message, setMessage] = useState<MessageState | null>(null)
-  const retry = async (id: string) => {
-    const reason = window.prompt('请输入重试原因')?.trim()
-    if (!reason) return
-    const response = await adminRequest(`/api/admin/generations/${id}/retry`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }) })
-    const payload = await readPayload(response)
-    setMessage({ text: response.ok ? '已记录重试请求' : payloadMessage(payload, '重试失败'), error: !response.ok })
-    if (response.ok) window.dispatchEvent(new Event('admin-refresh'))
-  }
-  return <section className="panel"><PanelTitle title="生图任务" action={loading ? '加载中' : `共 ${data.generations.length} 条`} /><GenerationTable generations={data.generations} onRetry={retry} />{message && <div className={message.error ? 'form-error' : 'form-message'}>{message.text}</div>}{!loading && !data.generations.length && <Empty text="暂无生图任务" />}</section>
+  const [confirm, setConfirm] = useState<ConfirmRequest | null>(null)
+  const retry = (id: string) => setConfirm({
+    title: '重试这个生图任务',
+    description: '任务会重新排队生成，请确认上游模型已经恢复。',
+    reasonLabel: '重试原因（记入审计日志）',
+    reasonPlaceholder: '例如：上游超时 / 模型返回异常',
+    confirmLabel: '确认重试',
+    onConfirm: async (reason) => {
+      const response = await adminRequest(`/api/admin/generations/${id}/retry`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: reason || '后台重试' }) })
+      const payload = await readPayload(response)
+      setMessage({ text: response.ok ? '已记录重试请求' : payloadMessage(payload, '重试失败'), error: !response.ok })
+      if (response.ok) window.dispatchEvent(new Event('admin-refresh'))
+    },
+  })
+  return <section className="panel"><PanelTitle title="生图任务" action={loading ? '加载中' : `共 ${data.generations.length} 条`} /><GenerationTable generations={data.generations} onRetry={retry} />{message && <div className={message.error ? 'form-error' : 'form-message'}>{message.text}</div>}{!loading && !data.generations.length && <Empty text="暂无生图任务" />}{confirm && <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />}</section>
 }
 function GenerationTable({ generations, onRetry }: { generations: Generation[]; onRetry?: (id: string) => void }) {
   const status: Record<string, string> = { succeeded: '成功', failed: '失败', uncertain: '待核查', processing: '处理中' }
@@ -275,14 +310,25 @@ type AdminStyle = { id?: number; styleId: string; version: number; name: string;
 const blankStyle = { styleId: '', name: '', subtitle: '', description: '', prompt: '', mode: 'realistic', motif: '', palette: '#35574a,#c8a96b,#edf1e8', sortOrder: '0', previewPath: '', enabled: true }
 function Styles({ role }: { role: Role }) {
   const { data, loading } = useAdminData<{ styles: AdminStyle[] }>('/api/admin/styles', { styles: [] })
-  const [form, setForm] = useState(blankStyle); const [editing, setEditing] = useState<AdminStyle | null>(null); const [editorOpen, setEditorOpen] = useState(false); const [message, setMessage] = useState<MessageState | null>(null); const [uploading, setUploading] = useState(false); const [busy, setBusy] = useState(false)
+  const [form, setForm] = useState(blankStyle); const [editing, setEditing] = useState<AdminStyle | null>(null); const [editorOpen, setEditorOpen] = useState(false); const [message, setMessage] = useState<MessageState | null>(null); const [uploading, setUploading] = useState(false); const [busy, setBusy] = useState(false); const [confirm, setConfirm] = useState<ConfirmRequest | null>(null)
   const update = (key: keyof typeof blankStyle, value: string | boolean) => setForm((current) => ({ ...current, [key]: value }))
   const openEdit = (item: AdminStyle) => { let palette = blankStyle.palette; try { const parsed = JSON.parse(item.paletteJson ?? ''); if (Array.isArray(parsed) && parsed.length === 3) palette = parsed.join(',') } catch { /* legacy row */ } setEditing(item); setForm({ styleId: item.styleId, name: item.name, subtitle: item.subtitle, description: item.description, prompt: item.prompt, mode: item.mode, motif: item.motif ?? '', palette, sortOrder: String(item.sortOrder), previewPath: item.previewPath ?? '', enabled: Boolean(item.enabled) }); setMessage(null) }
   const save = async () => { setBusy(true); const body = { ...form, version: editing?.version, sortOrder: Number(form.sortOrder), palette: form.palette.split(',').map((item) => item.trim()) }; const response = await adminRequest(editing ? `/api/admin/styles/${editing.styleId}` : '/api/admin/styles', { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); const payload = await readPayload(response); setMessage({ text: response.ok ? '风格草稿已保存' : payloadMessage(payload, '保存失败'), error: !response.ok }); if (response.ok) { setEditing(null); setForm(blankStyle); setEditorOpen(false); window.dispatchEvent(new Event('admin-refresh')) } setBusy(false) }
   const upload = async (file: File) => { setUploading(true); const response = await adminRequest('/api/admin/style-assets', { method: 'POST', headers: { 'Content-Type': file.type }, body: file }); const payload = await readPayload(response); setMessage({ text: response.ok ? '图片已上传' : payloadMessage(payload, '上传失败'), error: !response.ok }); if (response.ok) update('previewPath', String(payload.path)); setUploading(false) }
   const publish = async (item: AdminStyle) => { const response = await adminRequest(`/api/admin/styles/${item.styleId}/publish`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: item.version }) }); const payload = await readPayload(response); setMessage({ text: response.ok ? '风格已发布' : payloadMessage(payload, '发布失败'), error: !response.ok }); if (response.ok) window.dispatchEvent(new Event('admin-refresh')) }
-  const archive = async (item: AdminStyle) => { if (!window.confirm(`确认停用 ${item.name}？`)) return; const response = await adminRequest(`/api/admin/styles/${item.styleId}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: '后台停用' }) }); if (!response.ok) setMessage({ text: '停用失败', error: true }); else window.dispatchEvent(new Event('admin-refresh')) }
-  return <section className="panel styles-panel"><div className="style-toolbar"><div><h2>风格配置</h2><p>维护游客端可用的风格版本。</p></div><button className="primary-btn" onClick={() => { setEditing(null); setForm(blankStyle); setMessage(null); setEditorOpen(true) }}><Plus size={16} />新建风格</button></div><table><thead><tr><th>预览</th><th>ID</th><th>版本</th><th>名称</th><th>模式</th><th>状态</th><th>操作</th></tr></thead><tbody>{data.styles.map((item) => <tr key={`${item.styleId}-${item.version}`}><td>{item.previewUrl ? <img className="style-thumb" src={item.previewUrl} alt="" /> : '—'}</td><td className="mono">{item.styleId}</td><td>v{item.version}</td><td><b>{item.name}</b><small className="table-subtitle">{item.subtitle}</small></td><td>{item.mode === 'artistic' ? '艺术' : '写实'}</td><td><span className={`status-pill ${item.status === 'published' ? 'success' : item.status === 'draft' ? 'pending' : 'neutral'}`}>{item.status === 'published' ? '已发布' : item.status === 'draft' ? '草稿' : '已停用'}</span></td><td className="row-actions"><button className="text-btn" onClick={() => { openEdit(item); setEditorOpen(true) }}>编辑</button>{role === 'owner' && item.status !== 'published' && <button className="text-btn" onClick={() => void publish(item)}>发布</button>}{role === 'owner' && item.status === 'published' && <button className="text-btn danger-btn" onClick={() => void archive(item)}>停用</button>}</td></tr>)}</tbody></table>{!loading && !data.styles.length && <Empty text="暂无风格版本" />}{editorOpen && <StyleEditor form={form} editing={editing} update={update} save={save} upload={upload} uploading={uploading} busy={busy} close={() => { setEditing(null); setForm(blankStyle); setEditorOpen(false) }} message={message} />}</section>
+  const archive = (item: AdminStyle) => setConfirm({
+    title: `停用风格「${item.name}」`,
+    description: '停用后游客端不再展示该风格，游客已生成的作品不受影响。',
+    reasonLabel: '停用原因（记入审计日志）',
+    reasonPlaceholder: '例如：季节款式下架',
+    confirmLabel: '确认停用',
+    onConfirm: async (reason) => {
+      const response = await adminRequest(`/api/admin/styles/${item.styleId}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: reason || '后台停用' }) })
+      if (!response.ok) setMessage({ text: '停用失败', error: true })
+      else window.dispatchEvent(new Event('admin-refresh'))
+    },
+  })
+  return <section className="panel styles-panel"><div className="style-toolbar"><div><h2>风格配置</h2><p>维护游客端可用的风格版本。</p></div><button className="primary-btn" onClick={() => { setEditing(null); setForm(blankStyle); setMessage(null); setEditorOpen(true) }}><Plus size={16} />新建风格</button></div><table><thead><tr><th>预览</th><th>ID</th><th>版本</th><th>名称</th><th>模式</th><th>状态</th><th>操作</th></tr></thead><tbody>{data.styles.map((item) => <tr key={`${item.styleId}-${item.version}`}><td>{item.previewUrl ? <img className="style-thumb" src={item.previewUrl} alt="" /> : '—'}</td><td className="mono">{item.styleId}</td><td>v{item.version}</td><td><b>{item.name}</b><small className="table-subtitle">{item.subtitle}</small></td><td>{item.mode === 'artistic' ? '艺术' : '写实'}</td><td><span className={`status-pill ${item.status === 'published' ? 'success' : item.status === 'draft' ? 'pending' : 'neutral'}`}>{item.status === 'published' ? '已发布' : item.status === 'draft' ? '草稿' : '已停用'}</span></td><td className="row-actions"><button className="text-btn" onClick={() => { openEdit(item); setEditorOpen(true) }}>编辑</button>{role === 'owner' && item.status !== 'published' && <button className="text-btn" onClick={() => void publish(item)}>发布</button>}{role === 'owner' && item.status === 'published' && <button className="text-btn danger-btn" onClick={() => void archive(item)}>停用</button>}</td></tr>)}</tbody></table>{!loading && !data.styles.length && <Empty text="暂无风格版本" />}{editorOpen && <StyleEditor form={form} editing={editing} update={update} save={save} upload={upload} uploading={uploading} busy={busy} close={() => { setEditing(null); setForm(blankStyle); setEditorOpen(false) }} message={message} />}{confirm && <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />}</section>
 }
 function StyleEditor({ form, editing, update, save, upload, uploading, busy, close, message }: { form: typeof blankStyle; editing: AdminStyle | null; update: (key: keyof typeof blankStyle, value: string | boolean) => void; save: () => Promise<void>; upload: (file: File) => Promise<void>; uploading: boolean; busy: boolean; close: () => void; message: MessageState | null }) {
   return <div className="style-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close() }}><div className="style-modal" role="dialog" aria-modal="true"><div className="style-modal-head"><div><h2>{editing ? '编辑风格草稿' : '新建风格草稿'}</h2><p>保存后由老板发布到游客端。</p></div><button className="icon-btn" title="关闭" onClick={close}><X size={18} /></button></div><div className="config-form style-editor"><label>风格 ID<input disabled={Boolean(editing)} value={form.styleId} onChange={(event) => update('styleId', event.target.value)} /></label><label>名称<input value={form.name} onChange={(event) => update('name', event.target.value)} /></label><label>副标题<input value={form.subtitle} onChange={(event) => update('subtitle', event.target.value)} /></label><label>模式<select value={form.mode} onChange={(event) => update('mode', event.target.value)}><option value="realistic">写实</option><option value="artistic">艺术</option></select></label><label>标识字符<input value={form.motif} onChange={(event) => update('motif', event.target.value)} /></label><label>排序<input type="number" min="0" value={form.sortOrder} onChange={(event) => update('sortOrder', event.target.value)} /></label><label className="wide-field">描述<textarea value={form.description} onChange={(event) => update('description', event.target.value)} /></label><label className="wide-field">生图提示词<textarea value={form.prompt} onChange={(event) => update('prompt', event.target.value)} /></label><label className="wide-field">调色板<input value={form.palette} onChange={(event) => update('palette', event.target.value)} /></label><label className="checkbox-label"><input type="checkbox" checked={form.enabled} onChange={(event) => update('enabled', event.target.checked)} />启用</label><div className="wide-field style-upload"><span className="style-upload-label"><ImagePlus size={15} />预览图片</span><input type="file" accept="image/jpeg,image/png,image/webp" disabled={uploading} onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); event.currentTarget.value = '' }} />{form.previewPath && <img className="style-upload-preview" src={form.previewPath.startsWith('data:') ? form.previewPath : `/api/admin/style-assets/${form.previewPath.split('/').pop()?.split('.')[0]}`} alt="" />}</div><div className="editor-actions"><button className="primary-btn" disabled={busy || uploading} onClick={() => void save()}>{busy ? '保存中…' : '保存草稿'}</button><button className="secondary-cta" onClick={close}>取消</button>{message && <span className={message.error ? 'form-error' : 'form-message'}>{message.text}</span>}</div></div></div></div>
@@ -386,7 +432,25 @@ function RedeemCodes() {
   const { data, loading } = useAdminData<{ codes: Array<{ id: string; prefix: string; status: string; sessionId?: string; expiresAt?: string; redeemedAt?: string; createdAt: string }> }>('/api/admin/redeem-codes', { codes: [] })
   const [count, setCount] = useState('10'); const [expiry, setExpiry] = useState(''); const [generated, setGenerated] = useState<string[]>([]); const [message, setMessage] = useState<MessageState | null>(null); const [copied, setCopied] = useState(false)
   const generate = async () => { const amount = Number(count); if (!Number.isInteger(amount) || amount < 1 || amount > 500) { setMessage({ text: '生成数量需为 1 到 500', error: true }); return }; const response = await adminRequest('/api/admin/redeem-codes/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ count: amount, expiresAt: expiry || undefined }) }); const payload = await readPayload(response); setMessage({ text: response.ok ? '兑换码已生成，请立即复制保存' : payloadMessage(payload, '生成失败'), error: !response.ok }); if (response.ok) { setGenerated((payload.codes as Array<{ value: string }>).map((item) => item.value)); window.dispatchEvent(new Event('admin-refresh')) } }
-  const copy = async () => { await navigator.clipboard.writeText(generated.join('\n')); setCopied(true); window.setTimeout(() => setCopied(false), 1500) }
+  const copy = async () => {
+    const text = generated.join('\n')
+    // navigator.clipboard 只在 HTTPS 或 localhost 下存在，穿透域名是 http，必须降级到 execCommand。
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable')
+      await navigator.clipboard.writeText(text)
+    } catch {
+      const field = document.createElement('textarea')
+      field.value = text
+      field.setAttribute('readonly', '')
+      field.style.position = 'fixed'
+      field.style.opacity = '0'
+      document.body.appendChild(field)
+      field.select()
+      try { document.execCommand('copy') } catch { /* 复制不了时仍可手动全选 */ }
+      document.body.removeChild(field)
+    }
+    setCopied(true); window.setTimeout(() => setCopied(false), 1500)
+  }
   const status: Record<string, string> = { available: '未使用', reserved: '处理中', redeemed: '已兑换', disabled: '已禁用' }
   return <section className="panel"><div className="style-toolbar"><div><h2>兑换码管理</h2><p>由管理员生成，游客在体验页兑换使用。</p></div></div><div className="config-form redeem-code-form"><label>生成数量<input type="number" min="1" max="500" value={count} onChange={(event) => setCount(event.target.value)} /></label><label>过期时间（可选）<input type="datetime-local" value={expiry} onChange={(event) => setExpiry(event.target.value ? new Date(event.target.value).toISOString() : '')} /></label><div className="editor-actions"><button className="primary-btn" onClick={() => void generate()}><KeyRound size={16} />生成兑换码</button>{message && <span className={message.error ? 'form-error' : 'form-message'}>{message.text}</span>}</div></div>{generated.length > 0 && <div className="generated-secrets"><div className="generated-secrets-head"><strong>本次生成结果</strong><button className="copy-btn" onClick={() => void copy()}>{copied ? <Check size={15} /> : <Copy size={15} />}{copied ? '已复制' : '复制全部'}</button></div><textarea readOnly value={generated.join('\n')} onFocus={(event) => event.currentTarget.select()} /></div>}<table><thead><tr><th>前缀</th><th>状态</th><th>会话</th><th>过期时间</th><th>兑换时间</th><th>创建时间</th></tr></thead><tbody>{data.codes.map((item) => <tr key={item.id}><td className="mono">{item.prefix}••••</td><td><span className={`status-pill ${item.status === 'redeemed' ? 'success' : item.status === 'available' ? 'pending' : 'neutral'}`}>{status[item.status] ?? item.status}</span></td><td className="mono">{item.sessionId ?? '—'}</td><td>{formatDate(item.expiresAt)}</td><td>{formatDate(item.redeemedAt)}</td><td>{formatDate(item.createdAt)}</td></tr>)}</tbody></table>{!loading && !data.codes.length && <Empty text="暂无兑换码" />}</section>
 }

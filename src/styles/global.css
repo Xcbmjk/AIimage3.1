@@ -2263,3 +2263,53 @@ button {
   .mode-grid { grid-template-columns: 1fr; padding: 0 20px; }
   .background-grid { grid-template-columns: 1fr 1fr; padding: 0 20px; gap: 14px; }
 }
+
+.lightbox-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background: rgba(8, 24, 20, 0.92);
+}
+.lightbox-image {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 10px;
+  object-fit: contain;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+}
+.lightbox-close {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  cursor: pointer;
+}
+.catalog-error {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  max-width: min(560px, calc(100% - 40px));
+  padding: 16px 20px;
+  border-radius: 10px;
+  background: #fdf1ef;
+  border: 1px solid #f0c7c0;
+  box-shadow: 0 12px 34px rgba(20, 40, 34, 0.16);
+}
+.catalog-error b { display: block; color: #9c3a30; font-size: 14px; }
+.catalog-error span { display: block; margin-top: 4px; color: #7d5a55; font-size: 12px; }
+.catalog-error .secondary-cta { white-space: nowrap; }
