@@ -24,10 +24,12 @@ const nav: Array<{ id: View; label: string; icon: typeof Activity; roles?: Role[
   { id: 'audit', label: '审计日志', icon: FileText, roles: ['owner', 'technical'] },
 ]
 
+// 登录后直接保存 CSRF 令牌：cookie 读不到时（浏览器限制、代理丢 SameSite 等）写操作仍可用。
+let csrfToken: string | null = null
 function adminRequest(input: RequestInfo | URL, init: RequestInit = {}) {
   const headers = new Headers(init.headers)
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes((init.method ?? 'GET').toUpperCase())) {
-    const csrf = document.cookie.match(/(?:^|; )admin_csrf=([^;]+)/)?.[1]
+    const csrf = csrfToken ?? document.cookie.match(/(?:^|; )admin_csrf=([^;]+)/)?.[1]
     if (csrf) headers.set('X-CSRF-Token', decodeURIComponent(csrf))
   }
   return fetch(input, { ...init, credentials: 'same-origin', headers })
@@ -89,6 +91,7 @@ export function AdminApp() {
       })
       const payload = await readPayload(response)
       if (!response.ok || !payload.user) throw new Error(payloadMessage(payload, '账号或密码错误'))
+      if (typeof payload.csrf === 'string' && payload.csrf) csrfToken = payload.csrf
       setUser(payload.user as User)
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : '登录失败')
@@ -99,13 +102,14 @@ export function AdminApp() {
   const active = allowedNav.find((item) => item.id === view) ?? allowedNav[0]
   const logout = async () => {
     await adminRequest('/api/admin/auth/logout', { method: 'POST' }).catch(() => undefined)
+    csrfToken = null
     setUser(null)
   }
   return <div className="admin-shell">
     <aside className="sidebar">
       <div className="brand"><span className="brand-mark">焕</span><span><strong>焕新造像</strong><small>OPERATIONS</small></span></div>
       <nav>{allowedNav.map((item) => { const Icon = item.icon; return <button key={item.id} className={active.id === item.id ? 'active' : ''} onClick={() => setView(item.id)}><Icon size={17} /><span>{item.label}</span>{active.id === item.id && <ArrowRight size={14} />}</button> })}</nav>
-      <div className="sidebar-foot"><div className="user-chip"><span className="avatar"><UserRound size={16} /></span><span><b>{user.username}</b><small>{roleNames[user.role]}</small></span></div><button className="icon-btn" title="退出登录" onClick={() => void logout}><LogOut size={16} /></button></div>
+      <div className="sidebar-foot"><div className="user-chip"><span className="avatar"><UserRound size={16} /></span><span><b>{user.username}</b><small>{roleNames[user.role]}</small></span></div><button className="icon-btn" title="退出登录" onClick={() => void logout()}><LogOut size={16} /></button></div>
     </aside>
     <main className="content"><header className="content-head"><div><p className="kicker">PYTHON / ADMIN CONSOLE</p><h1>{active.label}</h1></div><div className="head-actions"><span className="live-dot"><i />服务在线</span><button className="icon-btn" title="刷新" onClick={() => window.dispatchEvent(new Event('admin-refresh'))}><RefreshCw size={16} /></button></div></header><ViewContent view={active.id} role={user.role} /></main>
   </div>
@@ -154,6 +158,9 @@ function Gallery({ role }: { role: Role }) {
   const [keyword, setKeyword] = useState('')
   const [submitted, setSubmitted] = useState('')
   const [preview, setPreview] = useState<GalleryItem | null>(null)
+  const [pending, setPending] = useState<{ item: GalleryItem; scope: 'asset' | 'generation'; total: number } | null>(null)
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<MessageState | null>(null)
   const query = submitted.trim() ? `&q=${encodeURIComponent(submitted.trim())}` : ''
   const { data, loading } = useAdminData<typeof emptyGallery>(`/api/admin/gallery?limit=120${query}`, emptyGallery)
@@ -165,25 +172,25 @@ function Gallery({ role }: { role: Role }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [preview])
   const siblings = preview ? data.items.filter((item) => item.generationId === preview.generationId).length : 0
-  const remove = async (item: GalleryItem, scope: 'asset' | 'generation') => {
-    const code = item.redeemCodePrefix ? `${item.redeemCodePrefix}••••` : item.assetId
-    const total = data.items.filter((entry) => entry.generationId === item.generationId).length
-    const confirmed = window.confirm(
-      scope === 'generation'
-        ? `确认删除本次任务的 ${total} 张图片（兑换码 ${code}）？删除后不可恢复，游客已保存的分享链接也会失效。`
-        : `确认删除这张图片（兑换码 ${code}）？删除后不可恢复。`,
-    )
-    if (!confirmed) return
-    const reason = window.prompt('请输入删除原因（将记入审计日志）')?.trim()
-    if (!reason) return
-    const response = await adminRequest(`/api/admin/gallery/${item.assetId}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reason, scope }),
-    })
-    const payload = await readPayload(response)
-    setMessage({ text: response.ok ? `已删除 ${Number(payload.count ?? 1)} 张图片` : payloadMessage(payload, '删除失败'), error: !response.ok })
-    if (response.ok) { setPreview(null); window.dispatchEvent(new Event('admin-refresh')) }
+  // 触屏设备/部分浏览器不弹原生 confirm、prompt，因此改用页面内确认框。
+  const askRemove = (item: GalleryItem, scope: 'asset' | 'generation') => {
+    setMessage(null)
+    setReason('')
+    setPending({ item, scope, total: data.items.filter((entry) => entry.generationId === item.generationId).length })
+  }
+  const confirmRemove = async () => {
+    if (!pending || busy) return
+    setBusy(true)
+    try {
+      const response = await adminRequest(`/api/admin/gallery/${pending.item.assetId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason.trim() || '后台手动删除', scope: pending.scope }),
+      })
+      const payload = await readPayload(response)
+      setMessage({ text: response.ok ? `已删除 ${Number(payload.count ?? 1)} 张图片` : payloadMessage(payload, '删除失败'), error: !response.ok })
+      if (response.ok) { setPreview(null); setPending(null); window.dispatchEvent(new Event('admin-refresh')) }
+    } finally { setBusy(false) }
   }
   return <section className="panel gallery-panel">
     <div className="style-toolbar"><div><h2>作品库</h2><p>按兑换码前缀、会话 ID 或任务 ID 检索游客生成的图片。</p></div><span className="muted">{loading ? '加载中' : `${data.total} 张 · ${formatBytes(data.totalBytes)}`}</span></div>
@@ -200,7 +207,7 @@ function Gallery({ role }: { role: Role }) {
         <span className="gallery-meta">{item.styleId} · {item.mode === 'agent' ? 'Agent' : '经典风格'}</span>
         <span className="gallery-meta muted">{formatDate(item.createdAt)} · {formatBytes(item.byteSize)}</span>
       </button>
-      {canDelete && <button className="gallery-delete" title="删除这张图片" onClick={() => void remove(item, 'asset')}><Trash2 size={14} /></button>}
+      {canDelete && <button className="gallery-delete" title="删除这张图片" aria-label="删除这张图片" onClick={(event) => { event.stopPropagation(); askRemove(item, 'asset') }}><Trash2 size={15} /></button>}
     </div>)}</div>
     <p className="muted gallery-note">兑换码明文不入库，这里只显示前 4 位前缀用于与票根核对；图片保留 30 天，到期后自动清理。{!canDelete && '删除作品仅限老板账号。'}</p>
     {preview && <div className="style-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPreview(null) }}>
@@ -220,10 +227,23 @@ function Gallery({ role }: { role: Role }) {
           </dl>
         </div>
         <div className="editor-actions gallery-preview-actions">
-          {canDelete && <button className="text-btn danger-btn gallery-delete-action" onClick={() => void remove(preview, 'asset')}><Trash2 size={15} />删除本张</button>}
-          {canDelete && siblings > 1 && <button className="text-btn danger-btn gallery-delete-action" onClick={() => void remove(preview, 'generation')}>删除本次全部 {siblings} 张</button>}
+          {canDelete && <button className="text-btn danger-btn gallery-delete-action" onClick={() => askRemove(preview, 'asset')}><Trash2 size={15} />删除本张</button>}
+          {canDelete && siblings > 1 && <button className="text-btn danger-btn gallery-delete-action" onClick={() => askRemove(preview, 'generation')}>删除本次全部 {siblings} 张</button>}
           <a className="secondary-cta" href={preview.url} target="_blank" rel="noreferrer">新窗口打开</a>
           <a className="primary-btn" href={preview.url} download={`${preview.redeemCodePrefix ?? 'artwork'}-${preview.styleId}.jpg`}><Download size={16} />下载原图</a>
+        </div>
+      </div>
+    </div>}
+    {pending && <div className="style-modal-backdrop confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setPending(null) }}>
+      <div className="style-modal confirm-modal" role="dialog" aria-modal="true">
+        <div className="style-modal-head"><div><h2>{pending.scope === 'generation' ? `删除本次 ${pending.total} 张图片` : '删除这张图片'}</h2><p className="mono">{pending.item.redeemCodePrefix ? `${pending.item.redeemCodePrefix}••••` : pending.item.assetId}</p></div></div>
+        <div className="confirm-body">
+          <p>删除后不可恢复，游客已保存的分享链接也会立即失效。</p>
+          <label>删除原因（可选，记入审计日志）<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="例如：游客要求删除 / 测试图" maxLength={200} /></label>
+        </div>
+        <div className="editor-actions confirm-actions">
+          <button className="secondary-cta" type="button" disabled={busy} onClick={() => setPending(null)}>取消</button>
+          <button className="primary-btn danger-solid" type="button" disabled={busy} onClick={() => void confirmRemove()}>{busy ? '删除中…' : '确认删除'}</button>
         </div>
       </div>
     </div>}

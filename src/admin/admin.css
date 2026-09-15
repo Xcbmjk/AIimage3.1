@@ -15,9 +15,21 @@
 .gallery-card{position:relative;border:1px solid #e2e9e4;border-radius:9px;background:#fff;overflow:hidden}
 .gallery-card:hover{border-color:#78a98a;box-shadow:0 6px 18px #16342514}
 .gallery-open{display:grid;gap:5px;width:100%;padding:0;border:0;background:transparent;text-align:left;cursor:pointer}
-.gallery-delete{position:absolute;top:8px;right:8px;display:grid;place-items:center;width:28px;height:28px;border:0;border-radius:6px;background:#ffffffd9;color:#a34b42;cursor:pointer;opacity:0;transition:opacity .12s}
-.gallery-card:hover .gallery-delete,.gallery-delete:focus-visible{opacity:1}
+.gallery-delete{position:absolute;top:8px;right:8px;display:grid;place-items:center;width:32px;height:32px;border:0;border-radius:6px;background:#fffffff2;color:#a34b42;cursor:pointer;box-shadow:0 2px 8px #16342526;transition:opacity .12s}
+/* 触屏设备没有 hover，按钮必须常显，否则手机上永远看不到 */
+@media(hover:hover){.gallery-delete{opacity:.85}.gallery-card:hover .gallery-delete,.gallery-delete:focus-visible{opacity:1}}
 .gallery-delete:hover{background:#a34b42;color:#fff}
+.confirm-backdrop{z-index:30}
+.confirm-modal{width:min(440px,100%)}
+.confirm-body{display:grid;gap:14px;padding:18px 24px 0}
+.confirm-body p{margin:0;color:#4a5c52;font-size:12px;line-height:1.6}
+.confirm-body label{display:grid;gap:6px;color:#607269;font-size:11px}
+.confirm-body input{padding:11px 12px;border:1px solid #dbe5de;border-radius:6px;outline:none;font:13px inherit;color:#1a2d24}
+.confirm-body input:focus{border-color:#5d9275;box-shadow:0 0 0 3px #5d92751c}
+.confirm-actions{padding:18px 24px 24px;justify-content:flex-end}
+.danger-solid{background:#a34b42;color:#fff}
+.danger-solid:hover{background:#8c3b33}
+.danger-solid:disabled{opacity:.6;cursor:progress}
 .gallery-delete-action{margin-right:auto;display:inline-flex;align-items:center;gap:6px}
 .gallery-delete-action:hover{text-decoration:underline}
 .gallery-thumb{display:block;aspect-ratio:3/4;background:#eef2ef;overflow:hidden}.gallery-thumb img{display:block;width:100%;height:100%;object-fit:cover}
