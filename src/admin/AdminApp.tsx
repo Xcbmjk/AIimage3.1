@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import {
   Activity, ArrowRight, BarChart3, Brain, Check, Copy, Download, FileText, ImagePlus,
   Images, KeyRound, LogOut, Palette, Plus, RefreshCw, RotateCcw, Search, ShieldCheck,
-  UserRound, X,
+  Trash2, UserRound, X,
 } from 'lucide-react'
 
 type Role = 'owner' | 'operator' | 'technical'
@@ -118,7 +118,7 @@ function Login({ busy, error, onSubmit }: { busy: boolean; error: string; onSubm
 }
 function ViewContent({ view, role }: { view: View; role: Role }) {
   if (view === 'overview') return <Overview />
-  if (view === 'gallery') return <Gallery />
+  if (view === 'gallery') return <Gallery role={role} />
   if (view === 'generations') return <Generations />
   if (view === 'entitlements') return <Entitlements />
   if (view === 'styles') return <Styles role={role} />
@@ -150,32 +150,59 @@ function formatBytes(size: number) {
   return `${(size / 1024 / 1024).toFixed(1)} MB`
 }
 const redeemStatus: Record<string, string> = { available: '未使用', reserved: '处理中', redeemed: '已兑换', disabled: '已禁用' }
-function Gallery() {
+function Gallery({ role }: { role: Role }) {
   const [keyword, setKeyword] = useState('')
   const [submitted, setSubmitted] = useState('')
   const [preview, setPreview] = useState<GalleryItem | null>(null)
+  const [message, setMessage] = useState<MessageState | null>(null)
   const query = submitted.trim() ? `&q=${encodeURIComponent(submitted.trim())}` : ''
   const { data, loading } = useAdminData<typeof emptyGallery>(`/api/admin/gallery?limit=120${query}`, emptyGallery)
+  const canDelete = role === 'owner'
   useEffect(() => {
     if (!preview) return
     const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setPreview(null) }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [preview])
+  const siblings = preview ? data.items.filter((item) => item.generationId === preview.generationId).length : 0
+  const remove = async (item: GalleryItem, scope: 'asset' | 'generation') => {
+    const code = item.redeemCodePrefix ? `${item.redeemCodePrefix}••••` : item.assetId
+    const total = data.items.filter((entry) => entry.generationId === item.generationId).length
+    const confirmed = window.confirm(
+      scope === 'generation'
+        ? `确认删除本次任务的 ${total} 张图片（兑换码 ${code}）？删除后不可恢复，游客已保存的分享链接也会失效。`
+        : `确认删除这张图片（兑换码 ${code}）？删除后不可恢复。`,
+    )
+    if (!confirmed) return
+    const reason = window.prompt('请输入删除原因（将记入审计日志）')?.trim()
+    if (!reason) return
+    const response = await adminRequest(`/api/admin/gallery/${item.assetId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason, scope }),
+    })
+    const payload = await readPayload(response)
+    setMessage({ text: response.ok ? `已删除 ${Number(payload.count ?? 1)} 张图片` : payloadMessage(payload, '删除失败'), error: !response.ok })
+    if (response.ok) { setPreview(null); window.dispatchEvent(new Event('admin-refresh')) }
+  }
   return <section className="panel gallery-panel">
     <div className="style-toolbar"><div><h2>作品库</h2><p>按兑换码前缀、会话 ID 或任务 ID 检索游客生成的图片。</p></div><span className="muted">{loading ? '加载中' : `${data.total} 张 · ${formatBytes(data.totalBytes)}`}</span></div>
     <form className="config-form inline gallery-search" onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); setSubmitted(keyword) }}>
       <label className="wide-field">检索关键词<input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="兑换码前缀 / 会话 ID / 任务 ID / 风格 ID" /></label>
       <div className="editor-actions"><button className="primary-btn" type="submit"><Search size={16} />搜索</button>{submitted && <button className="secondary-cta" type="button" onClick={() => { setKeyword(''); setSubmitted('') }}>清空</button>}</div>
     </form>
+    {message && <div className={message.error ? 'form-error' : 'form-message'}>{message.text}</div>}
     {!loading && !data.items.length && <Empty text={submitted ? '没有匹配的图片' : '暂无生成图片'} />}
-    <div className="gallery-grid">{data.items.map((item) => <button className="gallery-card" key={item.assetId} onClick={() => setPreview(item)}>
-      <span className="gallery-thumb"><img src={item.url} alt="" loading="lazy" /></span>
-      <span className="gallery-code">{item.redeemCodePrefix ? `${item.redeemCodePrefix}••••` : '无兑换码'}</span>
-      <span className="gallery-meta">{item.styleId} · {item.mode === 'agent' ? 'Agent' : '经典风格'}</span>
-      <span className="gallery-meta muted">{formatDate(item.createdAt)} · {formatBytes(item.byteSize)}</span>
-    </button>)}</div>
-    <p className="muted gallery-note">兑换码明文不入库，这里只显示前 4 位前缀用于与票根核对；图片保留 30 天，到期后自动清理。</p>
+    <div className="gallery-grid">{data.items.map((item) => <div className="gallery-card" key={item.assetId}>
+      <button className="gallery-open" title="查看大图" onClick={() => setPreview(item)}>
+        <span className="gallery-thumb"><img src={item.url} alt="" loading="lazy" /></span>
+        <span className="gallery-code">{item.redeemCodePrefix ? `${item.redeemCodePrefix}••••` : '无兑换码'}</span>
+        <span className="gallery-meta">{item.styleId} · {item.mode === 'agent' ? 'Agent' : '经典风格'}</span>
+        <span className="gallery-meta muted">{formatDate(item.createdAt)} · {formatBytes(item.byteSize)}</span>
+      </button>
+      {canDelete && <button className="gallery-delete" title="删除这张图片" onClick={() => void remove(item, 'asset')}><Trash2 size={14} /></button>}
+    </div>)}</div>
+    <p className="muted gallery-note">兑换码明文不入库，这里只显示前 4 位前缀用于与票根核对；图片保留 30 天，到期后自动清理。{!canDelete && '删除作品仅限老板账号。'}</p>
     {preview && <div className="style-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPreview(null) }}>
       <div className="style-modal gallery-modal" role="dialog" aria-modal="true">
         <div className="style-modal-head"><div><h2>作品详情</h2><p className="mono">{preview.assetId}</p></div><button className="icon-btn" title="关闭" onClick={() => setPreview(null)}><X size={18} /></button></div>
@@ -193,6 +220,8 @@ function Gallery() {
           </dl>
         </div>
         <div className="editor-actions gallery-preview-actions">
+          {canDelete && <button className="text-btn danger-btn gallery-delete-action" onClick={() => void remove(preview, 'asset')}><Trash2 size={15} />删除本张</button>}
+          {canDelete && siblings > 1 && <button className="text-btn danger-btn gallery-delete-action" onClick={() => void remove(preview, 'generation')}>删除本次全部 {siblings} 张</button>}
           <a className="secondary-cta" href={preview.url} target="_blank" rel="noreferrer">新窗口打开</a>
           <a className="primary-btn" href={preview.url} download={`${preview.redeemCodePrefix ?? 'artwork'}-${preview.styleId}.jpg`}><Download size={16} />下载原图</a>
         </div>

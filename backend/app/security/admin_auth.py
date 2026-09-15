@@ -31,6 +31,8 @@ ROLE_PERMISSIONS: dict[Role, frozenset[str]] = {
             "health:read",
             "health:write",
             "audit:read",
+            # 删除游客作品是破坏性操作，只给老板
+            "artwork:delete",
         }
     ),
     "operator": frozenset(

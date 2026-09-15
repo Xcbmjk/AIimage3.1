@@ -4,7 +4,7 @@ import json
 import re
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import Response
@@ -54,6 +54,11 @@ ALLOWED_IMAGE_MIME = {"image/jpeg", "image/png", "image/webp"}
 
 class RetryRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=500)
+
+
+class DeleteRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+    scope: Literal["asset", "generation"] = "asset"
 
 
 class StyleInput(BaseModel):
@@ -465,6 +470,64 @@ def create_admin_router(
             ],
             "total": len(rows),
             "totalBytes": total_bytes,
+        }
+
+    @router.delete("/api/admin/gallery/{asset_id}")
+    async def delete_gallery_asset(
+        asset_id: str,
+        payload: DeleteRequest,
+        principal: AdminPrincipal = Depends(require_admin),
+        session: AsyncSession = Depends(db),
+    ) -> dict[str, object]:
+        """删除作品库里的生成图片（连带磁盘文件）。
+
+        ``scope`` 为 ``generation`` 时删除同一生图任务下的全部图片，用于整组清理。
+        分享记录里仍会保留 assetId，游客扫码时该张会返回 404——这是预期行为。
+        """
+        _require(principal, "artwork:delete")
+        async with session.begin():
+            target = await session.get(Asset, asset_id, with_for_update=True)
+            if target is None:
+                raise ApiError("NOT_FOUND", "图片不存在或已删除", 404)
+            if payload.scope == "generation":
+                rows = list(
+                    (
+                        await session.scalars(
+                            select(Asset).where(Asset.generation_id == target.generation_id)
+                        )
+                    ).all()
+                )
+            else:
+                rows = [target]
+            removed_paths = [row.file_path for row in rows]
+            removed_ids = [row.id for row in rows]
+            generation_id = target.generation_id
+            for row in rows:
+                await session.delete(row)
+            await _audit(
+                session,
+                principal,
+                action="gallery.asset_deleted",
+                target_type="asset",
+                target_id=generation_id if payload.scope == "generation" else asset_id,
+                reason=payload.reason,
+                metadata={
+                    "scope": payload.scope,
+                    "assetIds": removed_ids,
+                    "count": len(removed_ids),
+                },
+            )
+        # 事务提交后再删文件：中途失败时数据库记录仍在，不会出现「有记录无文件」。
+        for path in removed_paths:
+            try:
+                asset_store.remove(path)
+            except (ApiError, OSError):  # pragma: no cover - 文件可能已被清理
+                continue
+        return {
+            "deleted": True,
+            "assetId": asset_id,
+            "generationId": generation_id,
+            "count": len(removed_ids),
         }
 
     @router.post("/api/admin/generations/{generation_id}/retry", status_code=202)
